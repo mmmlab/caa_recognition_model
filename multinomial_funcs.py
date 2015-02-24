@@ -10,4 +10,7 @@ def multinom_loglike(x,n,p):
     
     returns the log likelihood of obtaining x events in each category
     """
-    return gammaln(n+1)-gammaln(x+1).sum()+pl.sum(x*gammaln(p));
+    return gammaln(n+1)-pl.sum(gammaln(x+1))+pl.sum(x*gammaln(p));
+
+def chi_square_gof(x,n,p):
+    return sum((x-n*p)**2/(n*p));

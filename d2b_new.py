@@ -2,9 +2,24 @@ from pylab import *
 import numpy as np
 import pylab as pl
 from scipy import stats
-from scipy import optimize
+import scipy.optimize as opt
 import fftw_test as fftw
-#from reikna.fft import FFT,IFFT
+from multinomial_funcs import multinom_loglike,chi_square_gof
+
+################################################################################
+observed = np.loadtxt('neha/myData.txt'); # load the observed data
+remember_hit = np.loadtxt('neha/remRT_hit.txt'); # load remember RTs for hits
+know_hit = np.loadtxt('neha/knowRT_hit.txt'); # load know RTs for hits
+remember_fa = np.loadtxt('neha/remRT_fa.txt'); # load remember RTs for false alarms
+know_fa = np.loadtxt('neha/knowRT_fa.txt');  # load know RTs for false alarms
+
+remH_RT,remH_conf = np.split(remember_hit,2,axis=1);
+knowH_RT,knowH_conf = np.split(know_hit,2,axis=1);
+remFA_RT,remFA_conf = np.split(remember_fa,2,axis=1);
+knowFA_RT,knowFA_conf = np.split(know_fa,2,axis=1);
+
+all_RT = vstack([remH_RT,remFA_RT,knowH_RT,knowFA_RT]);
+################################################################################
 
 # Out[34]:
 
@@ -30,8 +45,75 @@ n = 3; # number of confidence criteria
 
 R = 0.1; D = 0.05; L = 0.1; Z = 0.0;
 
+params_init = (3*R/4,R/4,D/2,D/2,L,0.6,0.2);
+
 # [Melchi 2/23/2015]: added provisions for using fftw for convolutions 
 fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
+
+def find_ml_params(params_init,rem_RTs,know_RTs,new_freq,nr_quantiles=4):
+    objective_function = lambda x:compute_model_gof(x,rem_RTs,know_RTs,new_freq,nr_quantiles);
+    return opt.fmin(objective_function,params_init);
+
+def compute_model_nllr(model_params,rem_RTs,know_RTs,new_freq,nr_quantiles=4):
+    # computes the negative log of the ratio of the current model fit
+    # to the best achievable fit
+    
+    # compute N, the total number of trials
+    N = new_freq+len(rem_RTs)+len(know_RTs);
+    # compute x, the observed frequency for each category
+    rem_quantiles,know_quantiles,p_new = compute_model_quantiles(model_params,nr_quantiles);
+    ## compute the number of RTs falling into each quantile bin
+    rem_freqs = -diff([sum(rem_RTs>q) for q in rem_quantiles]+[0]);
+    know_freqs = -diff([sum(know_RTs>q) for q in know_quantiles]+[0]);
+    x = hstack([rem_freqs,know_freqs,new_freq]);
+    
+    # compute p the probability associated with each category
+    p_rem = ones(nr_quantiles)*len(rem_RTs)/(nr_quantiles*float(N));
+    p_know = ones(nr_quantiles)*len(know_RTs)/(nr_quantiles*float(N));
+    p = hstack([p_rem,p_know,p_new]);
+    return -multinom_loglike(x,N,p)+multinom_loglike(N*p,N,p);
+
+def compute_model_gof(model_params,rem_RTs,know_RTs,new_freq,nr_quantiles=4):
+    # computes the negative log of the ratio of the current model fit
+    # to the best achievable fit
+    
+    # compute N, the total number of trials
+    N = new_freq+len(rem_RTs)+len(know_RTs);
+    # compute x, the observed frequency for each category
+    rem_quantiles,know_quantiles,p_new = compute_model_quantiles(model_params,nr_quantiles);
+    ## compute the number of RTs falling into each quantile bin
+    rem_freqs = -diff([sum(rem_RTs>q) for q in rem_quantiles]+[0]);
+    know_freqs = -diff([sum(know_RTs>q) for q in know_quantiles]+[0]);
+    x = hstack([rem_freqs,know_freqs,new_freq]);
+    
+    # compute p the probability associated with each category
+    p_rem = ones(nr_quantiles)*len(rem_RTs)/(nr_quantiles*float(N));
+    p_know = ones(nr_quantiles)*len(know_RTs)/(nr_quantiles*float(N));
+    p = hstack([p_rem,p_know,p_new]);
+    return chi_square_gof(x,N,p)
+
+def compute_model_quantiles(params,nr_quantiles=4):
+    quantile_increment = 1.0/nr_quantiles;
+    quantiles = arange(0,1,quantile_increment);
+    # unpack model parameters
+    mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0 = params;
+    # compute marginal distributions
+    p_remember,p_know,p_new,t = predicted_proportions(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0);
+    # compute marginal category proportions
+    remember_total = p_remember.sum();
+    know_total = p_know.sum();
+    new_total = p_new.sum();
+    # compute integrals of marginal distributions
+    P_r = cumsum(p_remember)/remember_total;
+    P_k = cumsum(p_know)/know_total;
+    
+    # compute RT quantiles
+    rem_quantiles = array([t[argmax(P_r>q)] for q in quantiles]);
+    know_quantiles = array([t[argmax(P_k>q)] for q in quantiles]);
+    rem_quantiles[0] = 0;
+    know_quantiles[0] = 0;
+    # return quantile locations and marginal p(new)
+    return rem_quantiles,know_quantiles,new_total;
 
 def predicted_proportions(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,use_fftw=True):
     # compute process SD
@@ -171,3 +253,58 @@ def predicted_proportions_sim(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0):
     p_know = stats.gamma.pdf(t,*params_know)*DELTA_T*len(know_RTs)/float(NR_SAMPLES);
     p_new = stats.gamma.pdf(t,*params_new)*DELTA_T*len(new_RTs)/float(NR_SAMPLES);
     return p_remember,p_know,p_new,t;
+
+def generate_samples(params,nr_samples=NR_SAMPLES,delta_t=DELTA_T):
+    # unpack parameters
+    mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0 = params;
+    # compute process SD
+    sigma_r = sqrt(2*d_r*delta_t);
+    sigma_f = sqrt(2*d_f*delta_t);
+    sigma = sqrt(sigma_r**2+sigma_f**2);
+    
+    nr_tsteps = int(ceil(MAX_T/delta_t));
+    t = linspace(delta_t,MAX_T,nr_tsteps);
+    bound = exp(-tc_bound*t); # this is the collapsing bound
+
+    # Now simulate NR_SAMPLES trials
+    # 1. Generate a random position change for each time interval
+    #   these position changes should be drawn from a normal distribution with mean
+    #   mu and standard deviation sigma
+
+    delta_r = stats.norm.rvs(mu_r*delta_t,sigma_r,size=(nr_samples,nr_tsteps));
+    delta_f = stats.norm.rvs(mu_f*delta_t,sigma_f,size=(nr_samples,nr_tsteps));
+    delta_pos = delta_r+delta_f;
+
+    # 2. Use cumsum to compute absolute positions from delta_pos
+    positions = pl.cumsum(delta_pos,1)+z0;
+    r_positions = pl.cumsum(delta_r,1);
+    # 3. Now loop through each sample trial to compute decisions and resp times
+    decisions = [];
+    resp_times = [];
+    remembers = [];
+    for i, pos in enumerate(positions):
+        # Find the index where the position first crosses a boundary (i.e., 1 or -1)
+        cross_indices = pl.find(abs(pos)>=bound);
+        if len(cross_indices):
+            cross_idx = cross_indices[0]; # take the first index
+        else: # i.e., if no crossing was found
+            cross_idx = nr_tsteps-1; # set it to the final index
+        # 4. Now we can use this index to determine both the decision and the response time
+        decision = pos[cross_idx]>0;
+        resp_time = t[cross_idx]-0.5*delta_t; #i.e., the midpoint of the crossing interval
+        remember = r_positions[i][cross_idx]>=r_bound;
+
+        decisions.append(decision);
+        resp_times.append(resp_time);
+        remembers.append(remember);
+
+    # Now estimate the joint distribution
+    decisions = array(decisions);
+    resp_times = array(resp_times);
+    remembers = array(remembers);
+
+    remember_RTs = resp_times[logical_and(remembers,decisions)];
+    know_RTs = resp_times[logical_and(logical_not(remembers),decisions)];
+    new_RTs = resp_times[logical_not(decisions)];
+    
+    return remember_RTs,know_RTs,new_RTs;
