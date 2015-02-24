@@ -3,6 +3,7 @@ import numpy as np
 import pylab as pl
 from scipy import stats
 from scipy import optimize
+import fftw_test as fftw
 #from reikna.fft import FFT,IFFT
 
 # Out[34]:
@@ -19,17 +20,20 @@ from scipy import optimize
 # In[35]:
 
 # Constants
-DELTA_T     = 0.025;  # size of discrete time increment (sec.)
-MAX_T       = 20.0; #(i.e., 1 minute)
+NR_THREADS  = 1;    # this is for multithreaded fft
+DELTA_T     = 0.05;  # size of discrete time increment (sec.)
+MAX_T       = 12.0; #(i.e., 20 sec)
 NR_TSTEPS   = MAX_T/DELTA_T;
 NR_SSTEPS   = 8192#4096#2048;
 NR_SAMPLES  = 10000; # number of trials to use for MC likelihood computation
-n = 3; # number of confidence critetion
+n = 3; # number of confidence criteria
 
 R = 0.1; D = 0.05; L = 0.1; Z = 0.0;
 
+# [Melchi 2/23/2015]: added provisions for using fftw for convolutions 
+fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
 
-def predicted_proportions(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0):
+def predicted_proportions(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,use_fftw=True):
     # compute process SD
     sigma_r = sqrt(2*d_r*DELTA_T);
     sigma_f = sqrt(2*d_f*DELTA_T);
@@ -53,7 +57,10 @@ def predicted_proportions(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0):
     # compute the diffusion kernel
     kernel = stats.norm.pdf(x,mu,sigma)*delta_s;
     # ... and its Fourier transform. We'll use this to compute FD convolutions
-    ft_kernel = fft(kernel);
+    if(use_fftw):
+        ft_kernel = fftw.fft(kernel);
+    else:
+        ft_kernel = fft(kernel);
     tx = zeros((len(t),len(x)));
     p_remember = zeros(shape(t));
     p_old = zeros(shape(t));
@@ -78,7 +85,10 @@ def predicted_proportions(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0):
         #tx[i] = convolve(tx[i-1],kernel,'same');
         # convolve the particle distribution from the previous timestep
         # with the diffusion kernel (using Fourier domain convolution)
-        tx[i] = abs(ifftshift(ifft(fft(tx[i-1])*ft_kernel)));
+        if(use_fftw):
+            tx[i] = abs(ifftshift(fftw.ifft(fftw.fft(tx[i-1])*ft_kernel)));
+        else:
+            tx[i] = abs(ifftshift(ifft(fft(tx[i-1])*ft_kernel)));
         #tx[i] = abs(ifftshift(IFFT(FFT(tx[i-1])*ft_kernel)));
         p_pos = tx[i][x>=bound[i]]; # probability of each particle position above the upper bound
         x_pos = x[x>=bound[i]];     # location of each particle position above the upper bound
@@ -101,6 +111,7 @@ def predicted_proportions(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0):
 
     p_know = p_old-p_remember;
     return p_remember,p_know,p_new,t;
+
 
 def predicted_proportions_sim(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0):
     # compute process SD

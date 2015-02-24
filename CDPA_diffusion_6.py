@@ -2,58 +2,65 @@
 # In[1]:
 
 from pylab import *
-import numpy as np
+#import numpy as np
 import pylab as pl
+import numpy
 from scipy import stats
 from scipy import optimize
 from scipy.integrate import fixed_quad 
 
+## Start by reading in the data.
+# the reason to do this first is that, in order to be efficient,
+# we don't want to represent any more of the time axis than we have to.
 
-# In[19]:
-
-# Constants
-DELTA_T     = 0.025;  # size of discrete time increment (sec.)
-MAX_T       = 20
-NR_TSTEPS   = MAX_T/DELTA_T;
-NR_SSTEPS   = 8192#4096#2048;
-NR_SAMPLES  = 10000; # number of trials to use for MC likelihood computation
-n = 2; # number of confidence critetion
-QUANT = array([25,50,75]);
-#quant = array([20,40,60,80]);
-
-R = 0.1; D = 0.05; L = 0.1; Z = 0.0;
-#observed = numpy.loadtxt('myData.txt'); # load the observed data
-#remember_hit = numpy.loadtxt('remRT_hit.txt'); # load remember RTs for hits
-#know_hit = numpy.loadtxt('knowRT_hit.txt'); # load know RTs for hits
-#remember_fa = numpy.loadtxt('remRT_fa.txt'); # load remember RTs for false alarms
-#know_fa = numpy.loadtxt('knowRT_fa.txt');  # load know RTs for false alarms
-
-observed = numpy.loadtxt('genData.txt'); # load the observed data
-remember_hit = numpy.loadtxt('gen_rem_hit.txt'); # load remember RTs for hits
-know_hit = numpy.loadtxt('gen_know_hit.txt'); # load know RTs for hits
-remember_fa = numpy.loadtxt('gen_rem_fa.txt'); # load remember RTs for false alarms
-know_fa = numpy.loadtxt('gen_know_fa.txt');  # load know RTs for false alarms
-print observed;
-
-
-# Out[19]:
-
-#     [[  848.31626927   490.80124766     0.        ]
-#      [  364.99685766   396.24921546     0.        ]
-#      [   84.2443294    128.4317921      0.        ]
-#      [    0.             0.          1645.62808806]
-#      [  210.49635501   195.28630806     0.        ]
-#      [  161.28810876   252.59096634     0.        ]
-#      [   68.00027682   153.57653898     0.        ]
-#      [    0.             0.          2910.29553155]]
-#     
-
-# In[3]:
+################################################################################
+observed = numpy.loadtxt('neha/myData.txt'); # load the observed data
+remember_hit = numpy.loadtxt('neha/remRT_hit.txt'); # load remember RTs for hits
+know_hit = numpy.loadtxt('neha/knowRT_hit.txt'); # load know RTs for hits
+remember_fa = numpy.loadtxt('neha/remRT_fa.txt'); # load remember RTs for false alarms
+know_fa = numpy.loadtxt('neha/knowRT_fa.txt');  # load know RTs for false alarms
 
 remH_RT,remH_conf = numpy.split(remember_hit,2,axis=1);
 knowH_RT,knowH_conf = numpy.split(know_hit,2,axis=1);
 remFA_RT,remFA_conf = numpy.split(remember_fa,2,axis=1);
 knowFA_RT,knowFA_conf = numpy.split(know_fa,2,axis=1);
+
+all_RT = vstack([remH_RT,remFA_RT,knowH_RT,knowFA_RT]);
+################################################################################
+
+
+DELTA_T     = 0.025;  # size of discrete time increment (sec.)
+MAX_T       = ceil(percentile(all_RT,99.5))
+NR_TSTEPS   = MAX_T/DELTA_T;
+NR_SSTEPS   = 8192#4096#2048;
+NR_SAMPLES  = 10000; # number of trials to use for MC likelihood computation
+n = 2; # number of confidence critetion
+QUANT = array([0.25,0.50,0.75]);
+QUANT_DIFF = 0.25;
+
+
+# In[3]:
+
+R = 0.1; D = 0.05; L = 0.1; Z = 0.0;
+
+print observed;
+
+
+# Out[3]:
+
+#     [[  918.   526.     0.]
+#      [  362.   431.     0.]
+#      [   23.    47.     0.]
+#      [    0.     0.  1661.]
+#      [  196.   164.     0.]
+#      [  228.   356.     0.]
+#      [   28.    59.     0.]
+#      [    0.     0.  2937.]]
+#     
+
+# In[18]:
+
+
 print "rem hit high", remH_RT[remH_conf==2].mean();
 print "rem hit med", remH_RT[remH_conf==1].mean();
 print "rem hit low", remH_RT[remH_conf==0].mean();
@@ -62,14 +69,14 @@ print "know hit med", knowH_RT[knowH_conf==1].mean();
 print "know hit low", knowH_RT[knowH_conf==0].mean();
 
 
-# Out[3]:
+# Out[18]:
 
-#     rem hit high 1.31647239264
-#     rem hit med 2.93447204969
-#     rem hit low 4.45642857143
-#     know hit high 1.48516304348
-#     know hit med 3.00610955056
-#     know hit low 4.60579710145
+#     rem hit high 1.82368573676
+#     rem hit med 2.1346722535
+#     rem hit low 2.20608522991
+#     know hit high 1.60773045629
+#     know hit med 2.17318544077
+#     know hit low 2.57370984398
 #     
 
 # In[4]:
@@ -125,7 +132,9 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,f_bound,z0):
     # compute STD[r|(r+f)]
     s_r_cond = s_r*sqrt(1-rho**2);
     s_f_cond = s_f*sqrt(1-rhoF**2);
-    
+    # [Melchi] I'm not sure I understand what is being computed below.
+    # Why was this changed from the original code that directly computed
+    # p_remember, and what does 'f_bound' represent? [Melchi]
     p_know[0] = p_old[0]*stats.norm.sf(f_bound,mu_f_cond,s_f_cond)+p_old[0]*stats.norm.cdf(r_bound,mu_r_cond,s_r_cond);
     
     # remove from consideration any particles that already hit the bound
@@ -157,14 +166,13 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,f_bound,z0):
 
     p_remember = p_old-p_know;
     
+    ######################################################################################
     # determine the proportion of remember and know responses by confidence
     rem = zeros((n+1,1));
     know = zeros((n+1,1));
     quant_rem = zeros((n+1,size(QUANT)));
     quant_know = zeros((n+1,size(QUANT)));
-    
-    quant_vals = QUANT/100;
-    
+     
     for i,hi_edge in enumerate(t_C):
         # find the distribution bounds for the current confidence level
         if(i==0):
@@ -174,19 +182,40 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,f_bound,z0):
             
         
         # compute the CDF for this quantile
-        prob_rem = p_remember[logical_and(t>=lo_edge,t<hi_edge)];
+        #prob_rem = p_remember[logical_and(t>=lo_edge,t<hi_edge)];
+        prob_rem = p_remember[lo_edge:hi_edge];
         rem[i] = prob_rem.sum()
         prob_rem = cumsum(prob_rem/rem[i]);
         
-        prob_know = p_know[logical_and(t>=lo_edge,t<hi_edge)];
+        
+        #prob_know = p_know[logical_and(t>=lo_edge,t<hi_edge)];
+        prob_know = p_know[lo_edge:hi_edge];
         know[i] = prob_know.sum();
         prob_know = cumsum(prob_know/know[i]);
         
+        
         # find the index of the CDF value that most closely matches the desire quantile rank.
         # the time associated with that index is the quantile value
+        t_temp = t[lo_edge:hi_edge];
+        #quant_rem[i,:] = array([t_temp[argmin(abs(prob_rem-q))] for q in QUANT]);
+        #quant_know[i,:] = array([t_temp[argmin(abs(prob_know-q))] for q in QUANT]);
         
-        quant_rem[i,:] = array([t[argmin(abs(prob_rem-q))] for q in quant_vals]);
-        quant_know[i,:] = array([t[argmin(abs(prob_know-q))] for q in quant_vals]); 
+        # The following version is more efficent
+        quant_rem[i,:] = array([t_temp[argmax(prob_rem>q)] for q in QUANT]);
+        quant_know[i,:] = array([t_temp[argmax(prob_know>q)] for q in QUANT]);
+        
+    
+    prob_rem = p_remember[t_C[n-1]:];
+    rem[n] = prob_rem.sum();
+    prob_rem = cumsum(prob_rem/rem[n]);
+    
+    prob_know = p_know[t_C[n-1]:];
+    know[n] = prob_know.sum();
+    prob_know = cumsum(prob_know/know[n]);
+    
+    t_temp = t[t_C[n-1]:];
+    quant_rem[n,:] = array([t_temp[argmin(abs(prob_rem-q))] for q in QUANT]);
+    quant_know[n,:] = array([t_temp[argmin(abs(prob_know-q))] for q in QUANT]); 
     
     temp = zeros((n+1,1));
     data = vstack((hstack((rem,know,temp)),array([0,0,sum(p_new)])));
@@ -197,11 +226,10 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,f_bound,z0):
     #return sum(p_remember),sum(p_know),sum(p_new),t;
 
 
-# In[5]:
+#get_ipython().magic(u'timeit data,dataquant= predicted_proportions(array([0.8,0.5]),3*R/4,R/4,D/2,D/2,L,0.6,0.9,0.2);')
 
-data,dataquant= predicted_proportions(array([0.77527381,0.62883984]),0.04369458,0.07381991,0.09110745,0.0506929,0.08987588,0.52394113,3.27516992,-0.15628818);
-print data;
-print dataquant;
+
+
 
 def compute_proportion(parameters):
     # unpack parameters
@@ -227,7 +255,7 @@ def compute_proportion(parameters):
     return predicted_data,quant_old,quant_new;
 
 
-# In[7]:
+# In[8]:
 
 param = array([0.8,0.5,3*R/4,R/4,D/2,D/2,L,0.6,0.9,0.2,3*R/4,R/4,D/2,D/2]);
 prop,dataold,datanew = compute_proportion(param);
@@ -236,7 +264,7 @@ print dataold;
 print datanew;
 
 
-# Out[7]:
+# Out[8]:
 
 #     [[ 0.03597732  0.24335071  0.        ]
 #      [ 0.10122512  0.39883889  0.        ]
@@ -246,21 +274,21 @@ print datanew;
 #      [ 0.10122512  0.39883889  0.        ]
 #      [ 0.01872873  0.05082803  0.        ]
 #      [ 0.          0.          0.13279225]]
-#     [[ 1.35   1.675  1.975]
-#      [ 3.05   3.95   5.15 ]
-#      [ 7.5    8.175  9.2  ]
-#      [ 1.2    1.55   1.9  ]
-#      [ 2.9    3.725  4.875]
-#      [ 7.45   8.075  9.075]]
-#     [[ 1.35   1.675  1.975]
-#      [ 3.05   3.95   5.15 ]
-#      [ 7.5    8.175  9.2  ]
-#      [ 1.2    1.55   1.9  ]
-#      [ 2.9    3.725  4.875]
-#      [ 7.45   8.075  9.075]]
+#     [[ 1.325  1.675  1.95 ]
+#      [ 3.     3.9    5.075]
+#      [ 7.45   8.125  9.125]
+#      [ 1.2    1.55   1.875]
+#      [ 2.85   3.65   4.825]
+#      [ 7.4    8.025  8.975]]
+#     [[ 1.325  1.675  1.95 ]
+#      [ 3.     3.9    5.075]
+#      [ 7.45   8.125  9.125]
+#      [ 1.2    1.55   1.875]
+#      [ 2.85   3.65   4.825]
+#      [ 7.4    8.025  8.975]]
 #     
 
-# In[8]:
+# In[9]:
 
 def chi_square_quantile(quantile_edge,remember,know,rem_prop,know_prop,total):
     rem_edge = quantile_edge[0:n+1,0:size(QUANT)];
@@ -274,27 +302,27 @@ def chi_square_quantile(quantile_edge,remember,know,rem_prop,know_prop,total):
         rem_data = rem_RT[rem_conf==n-i];
         # know_data = observed reaction times for 'know' judgments
         know_data = know_RT[know_conf==n-i];
-        chi[i]= (((total*rem_prop[i]*QUANT[0]/100.00-sum(rem_data<rem_edge[i,0]))**2)/total*rem_prop[i]*QUANT[0]/100.00)+(((total*know_prop[i]*QUANT[0]/100.00-sum(know_data<know_edge[i,0]))**2)/total*know_prop[i]*QUANT[0]/100.00);
-        total_predicted_rem = total*rem_prop[i]*QUANT[0]/100.00;
-        total_predicted_know = total*know_prop[i]*QUANT[0]/100.00;
+        chi[i]= (((total*rem_prop[i]*QUANT_DIFF-sum(rem_data<rem_edge[i,0]))**2)/total*rem_prop[i]*QUANT_DIFF)+(((total*know_prop[i]*QUANT_DIFF-sum(know_data<know_edge[i,0]))**2)/total*know_prop[i]*QUANT_DIFF);
+        total_predicted_rem = total*rem_prop[i]*QUANT_DIFF;
+        total_predicted_know = total*know_prop[i]*QUANT_DIFF;
         total_observed_rem = sum(rem_data<rem_edge[i,0]);
         total_observed_know = sum(rem_data<know_edge[i,0]);
         
         for j in range(1,size(QUANT)):
-            observed_rem = sum(logical_and(rem_data<rem_edge[i,j],rem_data>=rem_edge[i,j-1]));#sum(rem_data<rem_edge[i,j])-sum(rem_data<rem_edge[i,j-1]);
-            predicted_rem = total*rem_prop[i]*QUANT[j]/100.00-total*rem_prop[i]*QUANT[j-1]/100.00;
+            observed_rem = sum(rem_data<rem_edge[i,j])-sum(rem_data<rem_edge[i,j-1]);
+            predicted_rem = total*rem_prop[i]*QUANT_DIFF
             observed_know = sum(know_data<know_edge[i,j])-sum(know_data<know_edge[i,j-1]);
-            predicted_know = total*know_prop[i]*QUANT[j]/100.00-total*know_prop[i]*QUANT[j-1]/100.00;
+            predicted_know = total*know_prop[i]*QUANT_DIFF
             total_predicted_rem += predicted_rem;
             total_predicted_know += predicted_know;
             total_observed_rem += observed_rem;
             total_observed_know += observed_know
             chi[i] += ((predicted_rem-observed_rem)**2)/predicted_rem + ((predicted_know-observed_know)**2)/predicted_know;
         chi[i] += (((total*rem_prop[i]-total_predicted_rem)-(size(rem_data)-total_observed_rem))**2)/(total*rem_prop[i]-total_predicted_rem)+(((total*know_prop[i]-total_predicted_know)-(size(know_data)-total_observed_know))**2)/(total*know_prop[i]-total_predicted_know);
-    return sum(chi);            
+    return sum(chi);     
 
 
-# In[30]:
+# In[10]:
 
 def chi_square(parm,observed=observed,remember_hit=remember_hit,know_hit=know_hit,remember_fa=remember_fa,know_fa=know_fa):
     old = sum(observed[0:n+2,0:3]);
@@ -308,67 +336,30 @@ def chi_square(parm,observed=observed,remember_hit=remember_hit,know_hit=know_hi
     return chi;
 
 
-# In[31]:
-
-#param = array([0.8,0.5,3*R/4,R/4,D/2,D/2,L,0.6,0.9,0.2,3*R/4,R/4,D/2,D/2]);
-#param = array([0.77527381,0.62883984,0.04369458,0.07381991,0.09110745,0.0506929,0.08987588,0.52394113,3.27516992,-0.15628818,-0.06139583,-0.01106722,0.05114411,0.03976751]);
-#param = array([0.84115819,0.74704381,0.04310687,0.07412053,0.09164065,0.0519376,0.09200852,0.54037748,3.23358512,-0.15311715,-0.06078642,-0.01088571,0.05144551,0.0405709]);
-#param = array([0.78541181,0.63970898,0.03955972,0.07311988,0.1072794,0.06329539,0.10958039,0.51742639,3.1245284,-0.12552528,-0.08099549,-0.01066264,0.06626993,0.04743122]);
-#param = array([0.78683601,0.63960793,0.05422867,0.07451649,0.10709069,0.06478986,0.11458067,0.51158948,2.79327592,-0.1263059,-0.09388634,-0.01071401,0.06806819,0.05255354]);
-#**param = array([0.7869721,0.63700509,0.05435808,0.0740718,0.10759311,0.07045798,0.11545176,0.50618527,2.753773,-0.12775451,-0.0934401,-0.01072134,0.06861823,0.05195974]);
-#*param = array([0.78459859,0.63952242,0.04978944,0.07352597,0.10670458,0.06402103,0.11025439,0.51524347,2.7886897,-0.12626302,-0.09405035,-0.01071137,0.06782216,0.05254717]);
-#*param = array([0.78296261,0.63997263,0.04632127,0.07460343,0.10695214,0.06320797,0.11019207,0.51554405,2.97408063,-0.12514898,-0.08946891,-0.01047399,0.06747498,0.05241066]);
-#*param = array([0.78259688,0.64005155,0.04426498,0.07455727,0.10692587,0.06322004,0.11017429,0.5155061,2.96924978,-0.12505542,-0.08874669,-0.0104581,0.06760646,0.05290787]);
-#param = array([0.7844855,0.63812949,0.04160994,0.07422986,0.10679761,0.06319589,0.11031198,0.51604383,3.02626311,-0.12463057,-0.0848216,-0.01059258,0.06564244,0.05272451]);
-#param = array ([0.78451135,0.6381526,0.03983549,0.0741186,0.1066705,0.06339201,0.11026772,0.51609682,3.04724215,-0.12461062,-0.08430678,-0.01051689,0.06568695,0.05271524]);
-#param = array([0.78455148,0.63818336,0.03982505,0.07405859,0.10665008,0.06347432,0.10989405,0.51688956,3.0489146,-0.12468622,-0.08440509,-0.01050146,0.06502361,0.05080061]);
-#param = array([0.78541181,0.63970898,0.03955972,0.07311988,0.1072794,0.06329539,0.10958039,0.51742639,3.1245284,-0.12552528,-0.08099549,-0.01066264,0.06626993,0.04743122]);
-#param = array([0.78459678,0.63952194,0.05422463,0.07452259,0.10671192,0.06402805,0.11025454,0.5152371,2.7871542,-0.12625914,-0.09405059,-0.01071414,0.06782042,0.05254881]);
-#param = array([0.77418006,0.64760922,0.04470405,0.05987517,0.11397229,0.06405119,0.11128166,0.47274559,2.46608167,-0.13583415,-0.11935047,-0.01123566,0.06999618,0.05581485]);
-#param = array([0.77380524,0.64736149,0.04495912,0.05991637,0.11904682,0.06406311,0.1114897,0.47119221,2.39503682,-0.13841441,-0.12783232,-0.0108359,0.06677878,0.05729744]);
-#param = array([0.77370433,0.64656344,0.04382392,0.06021717,0.13038513,0.06539262,0.11125704,0.46793749,2.38316611,-0.14153438,-0.12914206,-0.01057224,0.06711001,0.05758781]);
-#param = array([0.78217143,0.59825178,0.0402868,0.05977743,0.13962314,0.06859625,0.10912826,0.47256909,2.3039337,-0.1413971,-0.1354701,-0.01075517,0.06819155,0.0610058]);
-#param = array([0.78318031,0.60190985,0.02972369,0.07107757,0.16312199,0.06712262,0.10838358,0.49642148,1.34586881,-0.15470904,-0.14647127,-0.01224913,0.07327821,0.06133563]);
-#param = array([0.7824175,0.60426427,0.02899263,0.07380202,0.16343247,0.06748316,0.10833204,0.49467424,1.33786291,-0.1560848,-0.14645571,-0.01244893,0.07380844,0.06138794]);
+## In[21]:
+#
+##param = array([0.8,0.5,3*R/4,R/4,D/2,D/2,L,0.6,0.9,0.2,3*R/4,R/4,D/2,D/2]);
 #param = array([0.7831307,0.60253825,0.02923674,0.07357183,0.16362669,0.06709437,0.10826691,0.49595259,1.34030801,-0.1552733,-0.14614531,-0.0123076,0.07349555,0.06135621]);
-param = array([0.78459678,0.63952194,0.05422463,0.07452259,0.10671192,0.06402805,0.11025454,0.5152371,2.7871542,-0.12625914,-0.09405059,-0.01071414,0.06782042,0.05254881]);
-chi = chi_square(param);
-chi
-
-
-# Out[31]:
-
-#     448.49595089855364
-
-# In[ ]:
-
-#param_initial = array([0.78459678,0.63952194,0.05422463,0.07452259,0.10671192,0.06402805,0.11025454,0.5152371,2.7871542,-0.12625914,-0.09405059,-0.01071414,0.06782042,0.05254881]);
-#param_initial = array([0.77370433,0.64656344,0.04382392,0.06021717,0.13038513,0.06539262,0.11125704,0.46793749,2.38316611,-0.14153438,-0.12914206,-0.01057224,0.06711001,0.05758781]);
-#param_initial = array([0.78217143,0.59825178,0.0402868,0.05977743,0.13962314,0.06859625,0.10912826,0.47256909,2.3039337,-0.1413971,-0.1354701,-0.01075517,0.06819155,0.0610058]);
-#param_initial = array([0.78318031,0.60190985,0.02972369,0.07107757,0.16312199,0.06712262,0.10838358,0.49642148,1.34586881,-0.15470904,-0.14647127,-0.01224913,0.07327821,0.06133563]);
-#param_initial = array([0.7824175,0.60426427,0.02899263,0.07380202,0.16343247,0.06748316,0.10833204,0.49467424,1.33786291,-0.1560848,-0.14645571,-0.01244893,0.07380844,0.06138794]);
+#chi = chi_square(param);
+#chi
+#
+#
+## Out[21]:
+#
+##     587.44359692654484
+#
+## In[22]:
+#
+##param_initial = array([0.8,0.5,3*R/4,R/4,D/2,D/2,L,0.6,0.9,0.2,3*R/4,R/4,D/2,D/2]);
 #param_initial = array([0.7831307,0.60253825,0.02923674,0.07357183,0.16362669,0.06709437,0.10826691,0.49595259,1.34030801,-0.1552733,-0.14614531,-0.0123076,0.07349555,0.06135621]);
-#param_initial = array([0.7831307,0.60253825,0.02923674,0.07357185,0.1636267,0.06709437,0.10826691,0.49595259,1.34030798,-0.15527331,-0.14614542,-0.0123076,0.07349555,0.06135621]);
-param_initial = array([0.78459678,0.63952194,0.05422463,0.07452259,0.10671192,0.06402805,0.11025454,0.5152371,2.7871542,-0.12625914,-0.09405059,-0.01071414,0.06782042,0.05254881]);
-for i in range(10):
-    output = optimize.minimize(chi_square,param_initial,method='Nelder-Mead'); # estimate parameters that minimize the negative log likelihood
-    print output.x;
-    print output.message;
-    param_initial=output.x;
-    chi = chi_square(output.x); # check the value of chi square with estimated parameters (sanity check?)
-    print chi;
-    print "end"
-
-
-# In[9]:
-
-output = optimize.brute(chi_square,((0.01,1.0),(0.01,1.0),(0.01,1.0),(0.01,1.0),(-0.5,0.5),)); 
-print output;
-print chi_square(output);
-
-
-# Out[9]:
-
+#for i in range(10):
+#    output = optimize.minimize(chi_square,param_initial,method='Nelder-Mead'); # estimate parameters that minimize the negative log likelihood
+#    print output.x;
+#    print output.message;
+#    param_initial=output.x;
+#    chi = chi_square(output.x); # check the value of chi square with estimated parameters (sanity check?)
+#    print chi;
+#    print "end"
 
 
 
