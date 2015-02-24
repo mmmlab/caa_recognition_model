@@ -43,15 +43,22 @@ NR_SSTEPS   = 8192#4096#2048;
 NR_SAMPLES  = 10000; # number of trials to use for MC likelihood computation
 n = 3; # number of confidence criteria
 
-R = 0.1; D = 0.05; L = 0.1; Z = 0.0;
+R = 0.1; D = 0.1; L = 0.2; Z = -0.2;
 
-params_init = (3*R/4,R/4,D/2,D/2,L,0.6,0.2);
+params_init = (R/2,R/2,D/2,D/2,L,0.4,Z);
+
+param_bounds = [(0.0,1.0),(-1.0,1.0),(0.0,1.0),(0.0,1.0),(0.0,1.0),(0.0,1.0),(-1.0,1.0)];
 
 # [Melchi 2/23/2015]: added provisions for using fftw for convolutions 
 fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
 
 def find_ml_params(params_init,rem_RTs,know_RTs,new_freq,nr_quantiles=4):
     objective_function = lambda x:compute_model_gof(x,rem_RTs,know_RTs,new_freq,nr_quantiles);
+    return opt.fmin(objective_function,params_init);
+    #return opt.basinhopping(objective_function,params_init,stepsize=0.1);
+
+def find_ml_params_fixed_means(params_init,rem_RTs,know_RTs,new_freq,nr_quantiles=4):
+    objective_function = lambda x:compute_model_gof(hstack([params_init[:2],x[2:]]),rem_RTs,know_RTs,new_freq,nr_quantiles);
     return opt.fmin(objective_function,params_init);
 
 def compute_model_nllr(model_params,rem_RTs,know_RTs,new_freq,nr_quantiles=4):
@@ -71,7 +78,7 @@ def compute_model_nllr(model_params,rem_RTs,know_RTs,new_freq,nr_quantiles=4):
     p_rem = ones(nr_quantiles)*len(rem_RTs)/(nr_quantiles*float(N));
     p_know = ones(nr_quantiles)*len(know_RTs)/(nr_quantiles*float(N));
     p = hstack([p_rem,p_know,p_new]);
-    return -multinom_loglike(x,N,p)+multinom_loglike(N*p,N,p);
+    return -multinom_loglike(x,N,p);#+multinom_loglike(N*p,N,p);
 
 def compute_model_gof(model_params,rem_RTs,know_RTs,new_freq,nr_quantiles=4):
     # computes the negative log of the ratio of the current model fit
@@ -116,6 +123,13 @@ def compute_model_quantiles(params,nr_quantiles=4):
     return rem_quantiles,know_quantiles,new_total;
 
 def predicted_proportions(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,use_fftw=True):
+    # Hack to enforce reasonable parameter bounds in fmin
+    #mu_r = clip(mu_r,-1.0,1.0);
+    #mu_f = clip(mu_f,-1.0,1.0);
+    d_r = clip(d_r,1e-10,1.0);
+    d_f = clip(d_f,1e-10,1.0);
+    tc_bound = clip(tc_bound,0.0,1.0);
+    #r_bound = clip(r_bound,0.0,1.0);
     # compute process SD
     sigma_r = sqrt(2*d_r*DELTA_T);
     sigma_f = sqrt(2*d_f*DELTA_T);
