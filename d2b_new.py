@@ -10,15 +10,19 @@ from multinomial_funcs import multinom_loglike,chi_square_gof
 observed = np.loadtxt('neha/myData.txt'); # load the observed data
 remember_hit = np.loadtxt('neha/remRT_hit.txt'); # load remember RTs for hits
 know_hit = np.loadtxt('neha/knowRT_hit.txt'); # load know RTs for hits
+miss = np.loadtxt('neha/miss.txt'); # load miss RTs
 remember_fa = np.loadtxt('neha/remRT_fa.txt'); # load remember RTs for false alarms
 know_fa = np.loadtxt('neha/knowRT_fa.txt');  # load know RTs for false alarms
+CR = np.loadtxt('neha/CR.txt'); # load CR RTs
 
 remH_RT,remH_conf = np.split(remember_hit,2,axis=1);
 knowH_RT,knowH_conf = np.split(know_hit,2,axis=1);
 remFA_RT,remFA_conf = np.split(remember_fa,2,axis=1);
 knowFA_RT,knowFA_conf = np.split(know_fa,2,axis=1);
+miss_RT,junk = np.split(miss,2,axis=1);
+CR_RT,junk = np.split(CR,2,axis=1);
 
-all_RT = vstack([remH_RT,remFA_RT,knowH_RT,knowFA_RT]);
+all_RT = vstack([remH_RT,remFA_RT,knowH_RT,knowFA_RT,miss_RT,CR_RT]);
 ################################################################################
 
 # Out[34]:
@@ -52,50 +56,54 @@ param_bounds = [(0.0,1.0),(-1.0,1.0),(0.0,1.0),(0.0,1.0),(0.0,1.0),(0.0,1.0),(-1
 # [Melchi 2/23/2015]: added provisions for using fftw for convolutions 
 fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
 
-def find_ml_params(params_init,rem_RTs,know_RTs,new_freq,nr_quantiles=4):
-    objective_function = lambda x:compute_model_gof(x,rem_RTs,know_RTs,new_freq,nr_quantiles);
+def find_ml_params(params_init,rem_RTs,know_RTs,new_RTs,nr_quantiles=4):
+    objective_function = lambda x:compute_model_gof(x,rem_RTs,know_RTs,new_RTs,nr_quantiles);
     return opt.fmin(objective_function,params_init);
     #return opt.basinhopping(objective_function,params_init,stepsize=0.1);
 
-def find_ml_params_fixed_means(params_init,rem_RTs,know_RTs,new_freq,nr_quantiles=4):
-    objective_function = lambda x:compute_model_gof(hstack([params_init[:2],x[2:]]),rem_RTs,know_RTs,new_freq,nr_quantiles);
+def find_ml_params_fixed_means(params_init,rem_RTs,know_RTs,new_RTs,nr_quantiles=4):
+    objective_function = lambda x:compute_model_gof(hstack([params_init[:2],x[2:]]),rem_RTs,know_RTs,new_RTs,nr_quantiles);
     return opt.fmin(objective_function,params_init);
 
-def compute_model_nllr(model_params,rem_RTs,know_RTs,new_freq,nr_quantiles=4):
+def compute_model_nllr(model_params,rem_RTs,know_RTs,new_RTs,nr_quantiles=4):
     # computes the negative log of the ratio of the current model fit
     # to the best achievable fit
     
     # compute N, the total number of trials
-    N = new_freq+len(rem_RTs)+len(know_RTs);
+    N = len(rem_RTs)+len(know_RTs)+len(new_RTs);
     # compute x, the observed frequency for each category
-    rem_quantiles,know_quantiles,p_new = compute_model_quantiles(model_params,nr_quantiles);
+    rem_quantiles,know_quantiles,new_quantiles = compute_model_quantiles(model_params,nr_quantiles);
     ## compute the number of RTs falling into each quantile bin
     rem_freqs = -diff([sum(rem_RTs>q) for q in rem_quantiles]+[0]);
     know_freqs = -diff([sum(know_RTs>q) for q in know_quantiles]+[0]);
-    x = hstack([rem_freqs,know_freqs,new_freq]);
+    new_freqs = -diff([sum(new_RTs>q) for q in new_quantiles]+[0]);
+    x = hstack([rem_freqs,know_freqs,new_freqs]);
     
     # compute p the probability associated with each category
     p_rem = ones(nr_quantiles)*len(rem_RTs)/(nr_quantiles*float(N));
     p_know = ones(nr_quantiles)*len(know_RTs)/(nr_quantiles*float(N));
+    p_new = ones(nr_quantiles)*len(new_RTs)/(nr_quantiles*float(N));
     p = hstack([p_rem,p_know,p_new]);
     return -multinom_loglike(x,N,p);#+multinom_loglike(N*p,N,p);
 
-def compute_model_gof(model_params,rem_RTs,know_RTs,new_freq,nr_quantiles=4):
+def compute_model_gof(model_params,rem_RTs,know_RTs,new_RTs,nr_quantiles=4):
     # computes the negative log of the ratio of the current model fit
     # to the best achievable fit
     
     # compute N, the total number of trials
-    N = new_freq+len(rem_RTs)+len(know_RTs);
+    N = len(rem_RTs)+len(know_RTs)+len(new_RTs);
     # compute x, the observed frequency for each category
-    rem_quantiles,know_quantiles,p_new = compute_model_quantiles(model_params,nr_quantiles);
+    rem_quantiles,know_quantiles,new_quantiles = compute_model_quantiles(model_params,nr_quantiles);
     ## compute the number of RTs falling into each quantile bin
     rem_freqs = -diff([sum(rem_RTs>q) for q in rem_quantiles]+[0]);
     know_freqs = -diff([sum(know_RTs>q) for q in know_quantiles]+[0]);
-    x = hstack([rem_freqs,know_freqs,new_freq]);
+    new_freqs = -diff([sum(new_RTs>q) for q in new_quantiles]+[0]);
+    x = hstack([rem_freqs,know_freqs,new_freqs]);
     
     # compute p the probability associated with each category
     p_rem = ones(nr_quantiles)*len(rem_RTs)/(nr_quantiles*float(N));
     p_know = ones(nr_quantiles)*len(know_RTs)/(nr_quantiles*float(N));
+    p_new = ones(nr_quantiles)*len(new_RTs)/(nr_quantiles*float(N));
     p = hstack([p_rem,p_know,p_new]);
     return chi_square_gof(x,N,p)
 
@@ -113,14 +121,17 @@ def compute_model_quantiles(params,nr_quantiles=4):
     # compute integrals of marginal distributions
     P_r = cumsum(p_remember)/remember_total;
     P_k = cumsum(p_know)/know_total;
+    P_n = cumsum(p_new)/new_total;
     
     # compute RT quantiles
     rem_quantiles = array([t[argmax(P_r>q)] for q in quantiles]);
     know_quantiles = array([t[argmax(P_k>q)] for q in quantiles]);
+    new_quantiles = array([t[argmax(P_n>q)] for q in quantiles]);
     rem_quantiles[0] = 0;
     know_quantiles[0] = 0;
+    new_quantiles[0] = [0];
     # return quantile locations and marginal p(new)
-    return rem_quantiles,know_quantiles,new_total;
+    return rem_quantiles,know_quantiles,new_quantiles;
 
 def predicted_proportions(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,use_fftw=True):
     # Hack to enforce reasonable parameter bounds in fmin
