@@ -39,11 +39,12 @@ all_RT = vstack([remH_RT,remFA_RT,knowH_RT,knowFA_RT,miss_RT,CR_RT]);
 # In[35]:
 
 # Constants
+EPS         = 1e-10 # a very small value (used for numerical stability)
 NR_THREADS  = 1;    # this is for multithreaded fft
 DELTA_T     = 0.05;  # size of discrete time increment (sec.)
 MAX_T       = 12.0; #(i.e., 20 sec)
 NR_TSTEPS   = MAX_T/DELTA_T;
-NR_SSTEPS   = 8192#4096#2048;
+NR_SSTEPS   = 4096;#8192#4096#2048;
 NR_SAMPLES  = 10000; # number of trials to use for MC likelihood computation
 n = 3; # number of confidence criteria
 
@@ -51,14 +52,15 @@ R = 0.1; D = 0.1; L = 0.2; Z = -0.2;
 
 params_init = (R/2,R/2,D/2,D/2,L,0.4,Z);
 
-param_bounds = [(0.0,1.0),(-1.0,1.0),(0.0,1.0),(0.0,1.0),(0.0,1.0),(0.0,1.0),(-1.0,1.0)];
+param_bounds = [(0.0,1.0),(-1.0,1.0),(EPS,1.0),(EPS,1.0),(0.0,1.0),(0.0,1.0),(-1.0,1.0)];
 
 # [Melchi 2/23/2015]: added provisions for using fftw for convolutions 
 fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
 
 def find_ml_params(params_init,rem_RTs,know_RTs,new_RTs,nr_quantiles=4):
     objective_function = lambda x:compute_model_gof(x,rem_RTs,know_RTs,new_RTs,nr_quantiles);
-    return opt.fmin(objective_function,params_init);
+    return opt.differential_evolution(objective_function,param_bounds);
+    #return opt.fmin(objective_function,params_init);
     #return opt.basinhopping(objective_function,params_init,stepsize=0.1);
 
 def find_ml_params_fixed_means(params_init,rem_RTs,know_RTs,new_RTs,nr_quantiles=4):
@@ -115,9 +117,9 @@ def compute_model_quantiles(params,nr_quantiles=4):
     # compute marginal distributions
     p_remember,p_know,p_new,t = predicted_proportions(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0);
     # compute marginal category proportions
-    remember_total = p_remember.sum();
-    know_total = p_know.sum();
-    new_total = p_new.sum();
+    remember_total = p_remember.sum()+EPS;
+    know_total = p_know.sum()+EPS;
+    new_total = p_new.sum()+EPS;
     # compute integrals of marginal distributions
     P_r = cumsum(p_remember)/remember_total;
     P_k = cumsum(p_know)/know_total;
@@ -129,7 +131,7 @@ def compute_model_quantiles(params,nr_quantiles=4):
     new_quantiles = array([t[argmax(P_n>q)] for q in quantiles]);
     rem_quantiles[0] = 0;
     know_quantiles[0] = 0;
-    new_quantiles[0] = [0];
+    new_quantiles[0] = 0;
     # return quantile locations and marginal p(new)
     return rem_quantiles,know_quantiles,new_quantiles;
 
@@ -137,9 +139,9 @@ def predicted_proportions(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,use_fftw=True):
     # Hack to enforce reasonable parameter bounds in fmin
     #mu_r = clip(mu_r,-1.0,1.0);
     #mu_f = clip(mu_f,-1.0,1.0);
-    d_r = clip(d_r,1e-10,1.0);
-    d_f = clip(d_f,1e-10,1.0);
-    tc_bound = clip(tc_bound,0.0,1.0);
+    #d_r = clip(d_r,1e-10,1.0);
+    #d_f = clip(d_f,1e-10,1.0);
+    #tc_bound = clip(tc_bound,0.0,1.0);
     #r_bound = clip(r_bound,0.0,1.0);
     # compute process SD
     sigma_r = sqrt(2*d_r*DELTA_T);
