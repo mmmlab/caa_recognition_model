@@ -48,19 +48,19 @@ NR_SSTEPS   = 4096;#8192#4096#2048;
 NR_SAMPLES  = 10000; # number of trials to use for MC likelihood computation
 n = 3; # number of confidence criteria
 
-R = 0.1; D = 0.1; L = 0.2; Z = -0.2;
+R = 0.1; D = 0.2; L = 0.2; Z = 0.0;
 
-params_init = (R/2,R/2,D/2,D/2,L,0.4,Z);
+params_init = (R/2,R/2,D/2,D/2,L,0.3,Z);
 
-param_bounds = [(0.0,1.0),(-1.0,1.0),(EPS,1.0),(EPS,1.0),(0.0,1.0),(0.0,1.0),(-1.0,1.0)];
+param_bounds = [(0.0,1.0),(0.0,1.0),(EPS,1.0),(EPS,1.0),(0.0,1.0),(0.0,1.0),(-1.0,1.0)];
 
 # [Melchi 2/23/2015]: added provisions for using fftw for convolutions 
 fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
 
 def find_ml_params(params_init,rem_RTs,know_RTs,new_RTs,nr_quantiles=4):
     objective_function = lambda x:compute_model_gof(x,rem_RTs,know_RTs,new_RTs,nr_quantiles);
-    return opt.differential_evolution(objective_function,param_bounds);
-    #return opt.fmin(objective_function,params_init);
+    #return opt.differential_evolution(objective_function,param_bounds);
+    return opt.fmin(objective_function,params_init);
     #return opt.basinhopping(objective_function,params_init,stepsize=0.1);
 
 def find_ml_params_fixed_means(params_init,rem_RTs,know_RTs,new_RTs,nr_quantiles=4):
@@ -74,17 +74,17 @@ def compute_model_nllr(model_params,rem_RTs,know_RTs,new_RTs,nr_quantiles=4):
     # compute N, the total number of trials
     N = len(rem_RTs)+len(know_RTs)+len(new_RTs);
     # compute x, the observed frequency for each category
-    rem_quantiles,know_quantiles,new_quantiles = compute_model_quantiles(model_params,nr_quantiles);
+    rem_quantiles,know_quantiles,new_quantiles,p_r,p_k,p_n = compute_model_quantiles(model_params,nr_quantiles);
     ## compute the number of RTs falling into each quantile bin
     rem_freqs = -diff([sum(rem_RTs>q) for q in rem_quantiles]+[0]);
     know_freqs = -diff([sum(know_RTs>q) for q in know_quantiles]+[0]);
     new_freqs = -diff([sum(new_RTs>q) for q in new_quantiles]+[0]);
     x = hstack([rem_freqs,know_freqs,new_freqs]);
-    
-    # compute p the probability associated with each category
-    p_rem = ones(nr_quantiles)*len(rem_RTs)/(nr_quantiles*float(N));
-    p_know = ones(nr_quantiles)*len(know_RTs)/(nr_quantiles*float(N));
-    p_new = ones(nr_quantiles)*len(new_RTs)/(nr_quantiles*float(N));
+
+    # compute p, the probability associated with each category in the model
+    p_rem = p_r*ones(nr_quantiles)/float(nr_quantiles);
+    p_know = p_k*ones(nr_quantiles)/float(nr_quantiles);
+    p_new = p_n*ones(nr_quantiles)/float(nr_quantiles);
     p = hstack([p_rem,p_know,p_new]);
     return -multinom_loglike(x,N,p);#+multinom_loglike(N*p,N,p);
 
@@ -95,17 +95,17 @@ def compute_model_gof(model_params,rem_RTs,know_RTs,new_RTs,nr_quantiles=4):
     # compute N, the total number of trials
     N = len(rem_RTs)+len(know_RTs)+len(new_RTs);
     # compute x, the observed frequency for each category
-    rem_quantiles,know_quantiles,new_quantiles = compute_model_quantiles(model_params,nr_quantiles);
+    rem_quantiles,know_quantiles,new_quantiles,p_r,p_k,p_n = compute_model_quantiles(model_params,nr_quantiles);
     ## compute the number of RTs falling into each quantile bin
     rem_freqs = -diff([sum(rem_RTs>q) for q in rem_quantiles]+[0]);
     know_freqs = -diff([sum(know_RTs>q) for q in know_quantiles]+[0]);
     new_freqs = -diff([sum(new_RTs>q) for q in new_quantiles]+[0]);
     x = hstack([rem_freqs,know_freqs,new_freqs]);
     
-    # compute p the probability associated with each category
-    p_rem = ones(nr_quantiles)*len(rem_RTs)/(nr_quantiles*float(N));
-    p_know = ones(nr_quantiles)*len(know_RTs)/(nr_quantiles*float(N));
-    p_new = ones(nr_quantiles)*len(new_RTs)/(nr_quantiles*float(N));
+    # compute p, the probability associated with each category in the model
+    p_rem = p_r*ones(nr_quantiles)/float(nr_quantiles);
+    p_know = p_k*ones(nr_quantiles)/float(nr_quantiles);
+    p_new = p_n*ones(nr_quantiles)/float(nr_quantiles);
     p = hstack([p_rem,p_know,p_new]);
     return chi_square_gof(x,N,p)
 
@@ -133,7 +133,7 @@ def compute_model_quantiles(params,nr_quantiles=4):
     know_quantiles[0] = 0;
     new_quantiles[0] = 0;
     # return quantile locations and marginal p(new)
-    return rem_quantiles,know_quantiles,new_quantiles;
+    return rem_quantiles,know_quantiles,new_quantiles,sum(p_remember),sum(p_know),sum(p_new);
 
 def predicted_proportions(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,use_fftw=True):
     # Hack to enforce reasonable parameter bounds in fmin
