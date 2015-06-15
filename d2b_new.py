@@ -57,19 +57,22 @@ param_bounds = [(0.0,1.0),(0.0,1.0),(EPS,1.0),(EPS,1.0),(0.0,1.0),(0.0,1.0),(-1.
 # [Melchi 2/23/2015]: added provisions for using fftw for convolutions 
 fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
 
+old_RTs = [remH_RT,knowH_RT,miss_RT];
+new_RTs = [remFA_RT,knowFA_RT,CR_RT];
+
+def find_ml_params_combined(params_init,old_data=old_RTs,new_data=new_RTs,nr_quantiles=4):
+    objective_function = lambda x:compute_model_nll(x,rem_RTs,know_RTs,new_RTs,nr_quantiles);
+    return opt.differential_evolution(objective_function,param_bounds);
+
 def find_ml_params(params_init,rem_RTs,know_RTs,new_RTs,nr_quantiles=4):
-    objective_function = lambda x:compute_model_gof(x,rem_RTs,know_RTs,new_RTs,nr_quantiles);
-    #return opt.differential_evolution(objective_function,param_bounds);
-    return opt.fmin(objective_function,params_init);
+    objective_function = lambda x:compute_model_nll(x,rem_RTs,know_RTs,new_RTs,nr_quantiles);
+    return opt.differential_evolution(objective_function,param_bounds);
+    #return opt.fmin(objective_function,params_init);
     #return opt.basinhopping(objective_function,params_init,stepsize=0.1);
 
-def find_ml_params_fixed_means(params_init,rem_RTs,know_RTs,new_RTs,nr_quantiles=4):
-    objective_function = lambda x:compute_model_gof(hstack([params_init[:2],x[2:]]),rem_RTs,know_RTs,new_RTs,nr_quantiles);
-    return opt.fmin(objective_function,params_init);
-
-def compute_model_nllr(model_params,rem_RTs,know_RTs,new_RTs,nr_quantiles=4):
-    # computes the negative log of the ratio of the current model fit
-    # to the best achievable fit
+def compute_model_nll(model_params,rem_RTs,know_RTs,new_RTs,nr_quantiles=4):
+    # computes the negative log of the ratio of the current model likelihood
+    # to the best achievable likelihood
     
     # compute N, the total number of trials
     N = len(rem_RTs)+len(know_RTs)+len(new_RTs);
@@ -86,7 +89,7 @@ def compute_model_nllr(model_params,rem_RTs,know_RTs,new_RTs,nr_quantiles=4):
     p_know = p_k*ones(nr_quantiles)/float(nr_quantiles);
     p_new = p_n*ones(nr_quantiles)/float(nr_quantiles);
     p = hstack([p_rem,p_know,p_new]);
-    return -multinom_loglike(x,N,p);#+multinom_loglike(N*p,N,p);
+    return -multinom_loglike(x,N,p);
 
 def compute_model_gof(model_params,rem_RTs,know_RTs,new_RTs,nr_quantiles=4):
     # computes the negative log of the ratio of the current model fit
