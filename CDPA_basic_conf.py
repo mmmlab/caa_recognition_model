@@ -274,11 +274,15 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
         # compute E[r|(r+f)]
         mu_r_cond = mu_r*t[i]+(x_pos-t[i]*(mu_r+mu_f)-z0)*rho**2;
         mu_f_cond = mu_f*t[i]+(x_pos-t[i]*(mu_r+mu_f)-z0)*rhoF**2;
-
-        #p_know[i] = sum(p_pos*stats.norm.sf(f_bound,mu_f_cond,s_f_cond))+sum(p_pos*stats.norm.cdf(r_bound,mu_r_cond,s_r_cond));
-        p_remember[i] = sum(p_pos*stats.norm.sf(r_bound,mu_r_cond,s_r_cond));
         # remove from consideration any particles that already hit the bound
         tx[i]*=(abs(x)<bound[i]);
+        
+        # old method for computing p_remember
+        # p_remember[i] = sum(p_pos*stats.norm.sf(r_bound,mu_r_cond,s_r_cond));
+        # new method for computin p_remember
+        mu_r_delta = mu_r_cond+mu_r*deltaT;
+        s_r_delta = sqrt(s_r_cond**2+2*d_r*deltaT);
+        p_remember[i] = sum(p_pos*stats.norm.sf(r_bound,mu_r_delta,s_r_delta));
 
     #p_remember = p_old-p_know;
     p_know = p_old-p_remember;
@@ -293,7 +297,6 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
     # seconds have elapsed
     # 1. The resulting distribution should have mean = mu_r_cond + (mu_r*deltaT)
     # 2. The resulting distribution should have SD = sqrt(s_r_cond^2+2*d_r*deltaT)
-    
     ######################################################################################
     # determine the proportion of new, remember and know responses by confidence
     # determine the time points corresponding to quartiles within the overall distribution of remember and know responses
