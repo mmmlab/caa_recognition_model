@@ -1,0 +1,320 @@
+from pylab import *
+import pylab as pl
+import numpy
+from scipy import stats
+from scipy import optimize
+import pyfftw
+import fftw_test as fftw
+from multinomial_funcs import multinom_loglike,chi_square_gof
+
+## Start by reading in the data.
+# the reason to do this first is that, in order to be efficient,
+# we don't want to represent any more of the time axis than we have to.
+
+remember_hit = numpy.loadtxt('remRT_hit.txt'); # load remember RTs for hits
+know_hit = numpy.loadtxt('knowRT_hit.txt'); # load know RTs for hits
+remember_fa = numpy.loadtxt('remRT_fa.txt'); # load remember RTs for false alarms
+know_fa = numpy.loadtxt('knowRT_fa.txt');  # load know RTs for false alarms
+CR = numpy.loadtxt('CR.txt');  # load CR RTs 
+miss = numpy.loadtxt('miss.txt');  # load miss RTs
+
+EPS         = 1e-10 # a very small value (used for numerical stability)
+NR_THREADS  = 1;    # this is for multithreaded fft
+DELTA_T     = 0.05;  # size of discrete time increment (sec.)
+MAX_T       = 24; #ceil(percentile(all_RT,99.5))
+NR_TSTEPS   = MAX_T/DELTA_T;
+NR_SSTEPS   = 4096; #8192#4096#2048;
+NR_SAMPLES  = 10000; # number of trials to use for MC likelihood computation
+n = 2; # number of confidence critetion
+QUANT = array([0,0.25,0.50,0.75]);
+QUANT_DIFF = 0.25;
+NR_QUANTILES = 4;
+R = 0.1; D = 0.05; L = 0.1; Z = 0.0;
+
+#param_bounds = [(0.0,1.0),(0.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(-1.0,1.0)];
+#param_bounds = [(0.51,0.95),(0.1,0.5),(0.0,1.0),(0.0,1.0),(0.05,1.0),(0.05,1,0),(0.1,1.0),(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(-1.0,1.0)];
+param_bounds = [(0.51,0.95),(0.1,0.5),(0.0,1.0),(0.0,1.0),(0.05,1.0),(0.05,1.0),(0.1,1.0),(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(-1.0,1.0)];
+
+fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
+
+
+def find_ml_params():
+    return optimize.differential_evolution(compute_chi,param_bounds);
+
+def compute_chi(parameters,remember_hit=remember_hit,know_hit=know_hit,remember_fa=remember_fa,know_fa=know_fa,miss=miss,CR=CR):
+    #c = array([0.705368196179,0.566245508817]);
+    #mu_r = parameters[0]; 
+    #mu_f = parameters[1]; 
+    #d_r = parameters[2]; 
+    #d_f = parameters[3]; 
+    #tc_bound = parameters[4]; 
+    #r_bound = parameters[5];
+    #f_bound = parameters[n+6];
+    #z0 = parameters[6]; 
+    #mu_r0 = parameters[7]; 
+    #mu_f0 = parameters[8];
+
+    c = parameters[0:n];
+    mu_r = parameters[n+0]; 
+    mu_f = parameters[n+1];  
+    d_r = parameters[n+2];
+    d_f = parameters[n+3];  
+    tc_bound = parameters[n+4];
+    r_bound = parameters[n+5];
+    z0 = parameters[n+6];
+    mu_r0 = parameters[n+7]; 
+    mu_f0 = parameters[n+8];
+    
+    
+    #c = parameters[0:n];
+    #mu_r = parameters[n+0]; 
+    #mu_f = parameters[n+1]; 
+    #d_r = parameters[n+2]; 
+    #d_f = parameters[n+3]; 
+    #tc_bound = parameters[n+4]; 
+    #r_bound = parameters[n+5];
+    #z0 = parameters[n+6]; 
+    #mu_r0 = parameters[n+7]; 
+    #mu_f0 = parameters[n+8];
+    
+    #print "c", c;
+    #print "mur", mu_r;
+    #print "muf", mu_f;
+    #print "dr", d_r;
+    #print "df", d_f;
+    #print "tbound", tc_bound;
+    #print "rbound", r_bound;
+    #print "z0", z0;
+    
+    f = open('test.txt','a');
+    numpy.savetxt(f,parameters);
+    f.write('end');
+    f.write('\n');
+    f.close();
+    
+    chi = 0;
+    
+    remH_RT,remH_conf = numpy.split(remember_hit,2,axis=1);
+    knowH_RT,knowH_conf = numpy.split(know_hit,2,axis=1);
+    remFA_RT,remFA_conf = numpy.split(remember_fa,2,axis=1);
+    knowFA_RT,knowFA_conf = numpy.split(know_fa,2,axis=1);
+    CR_RT,CR_conf = numpy.split(CR,2,axis=1);
+    miss_RT,miss_conf = numpy.split(miss,2,axis=1);
+
+    
+    # compute x, the observed frequency for each category and confidence level    
+    rem_quantiles_old,know_quantiles_old,miss_quantiles,data_old = predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0);
+    rem_quantiles_new,know_quantiles_new,cr_quantiles,data_new = predicted_proportions(c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0);
+
+    # compute chi for each confidence level
+    for i in range(n+1):
+        # old RT data
+        rem_old = remH_RT[remH_conf==n-i];
+        know_old = knowH_RT[knowH_conf==n-i];
+        miss_old = miss_RT[miss_conf==n-i];
+       
+        # new RT data
+        rem_new = remFA_RT[remFA_conf==n-i];
+        know_new = knowFA_RT[knowFA_conf==n-i];
+        CR_new = CR_RT[CR_conf==n-i];
+    
+        chi+= compute_chi_conf(rem_old,know_old,miss_old,rem_new,know_new,CR_new,rem_quantiles_old[i],know_quantiles_old[i],miss_quantiles[i],rem_quantiles_new[i],know_quantiles_new[i],cr_quantiles[i],data_old[i],data_new[i]);    
+    return chi;
+
+def compute_chi_conf(remH,knowH,missH,remFA,knowFA,crFA,rem_quantiles_old,know_quantiles_old,miss_quantiles,rem_quantiles_new,know_quantiles_new,cr_quantiles,data_old,data_new):
+
+    # the total number of old and new trials
+    old = len(remH)+len(knowH)+len(missH);
+    new = len(remFA)+len(knowFA)+len(crFA);
+    
+    ## compute the number of RTs falling into each quantile bin for "old" data
+    rem_freqs_old = -diff([sum(remH>q) for q in rem_quantiles_old]+[0]);
+    know_freqs_old = -diff([sum(knowH>q) for q in know_quantiles_old]+[0]);
+    miss_freqs = -diff([sum(missH>q) for q in miss_quantiles]+[0]);
+    x_old = hstack([rem_freqs_old,know_freqs_old,miss_freqs]);
+    
+    # compute p, the probability associated with each category for "old" responses
+    p_rem = data_old[0]*ones(NR_QUANTILES)/float(NR_QUANTILES);
+    p_know = data_old[1]*ones(NR_QUANTILES)/float(NR_QUANTILES);
+    p_new = data_old[2]*ones(NR_QUANTILES)/float(NR_QUANTILES);
+    p_old = hstack([p_rem,p_know,p_new]);
+    chi_old = chi_square_gof(x_old,old,p_old)
+    
+    ## compute the number of RTs falling into each quantile bin for "new" data
+    rem_freqs_new = -diff([sum(remFA>q) for q in rem_quantiles_new]+[0]);
+    know_freqs_new = -diff([sum(knowFA>q) for q in know_quantiles_new]+[0]);
+    cr_freqs = -diff([sum(crFA>q) for q in cr_quantiles]+[0]);
+    x_new = hstack([rem_freqs_new,know_freqs_new,cr_freqs]);
+    
+    # compute p, the probability associated with each category for "new" responses
+    p_rem_n = data_new[0]*ones(NR_QUANTILES)/float(NR_QUANTILES);
+    p_know_n = data_new[1]*ones(NR_QUANTILES)/float(NR_QUANTILES);
+    p_new_n = data_new[2]*ones(NR_QUANTILES)/float(NR_QUANTILES);
+    p_new = hstack([p_rem_n,p_know_n,p_new_n]);
+    chi_new = chi_square_gof(x_new,new,p_new)
+    chi_conf = chi_old+chi_new;
+    #return chi_old;
+    return chi_conf;
+
+def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,use_fftw=True):
+    # compute process SD
+    sigma_r = sqrt(2*d_r*DELTA_T);
+    sigma_f = sqrt(2*d_f*DELTA_T);
+    sigma = sqrt(sigma_r**2+sigma_f**2);
+
+    # compute the correlation for r given r+f
+    rho = sigma_r/sigma;
+    rhoF = sigma_f/sigma;
+
+    t = linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
+    bound = exp(-tc_bound*t); # this is the collapsing bound
+    
+    ## Note that this means the higher temporal boundaries for arbitrary confidence
+    ## criteria 'C' can be computed as t_C = -ln(C)/tc_bound
+    t_C = zeros((n));
+    for i in range(n):
+        temp_time = -log(c[i])/tc_bound;
+        temp_index = pl.find(temp_time<=t);
+        t_C[i]= temp_index[0];
+        
+    #print "tc",t_C;
+    
+    mu = (mu_r+mu_f)*DELTA_T; # this is the average overall drift rate, with r = 'recall' and f = 'familiar'
+    # compute the bounding limit of the space domain. This should include at least 99% of the probability mass when the particle is at the largest possible bound
+    space_lim = max(bound)+3*sigma;
+    delta_s = 2*space_lim/NR_SSTEPS;
+    # finally, construct the space axis
+    x = linspace(-space_lim,space_lim,NR_SSTEPS);
+    # compute the diffusion kernel
+    kernel = stats.norm.pdf(x,mu,sigma)*delta_s;
+    # ... and its Fourier transform. We'll use this to compute FD convolutions
+    if(use_fftw):
+        ft_kernel = fftw.fft(kernel);
+    else:
+        ft_kernel = fft(kernel);
+    tx = zeros((len(t),len(x)));
+    #p_know = zeros(shape(t));
+    p_remember = zeros(shape(t));
+    p_old = zeros(shape(t));
+    p_new = zeros(shape(t));
+
+    # take care of the first timestep
+    tx[0] = stats.norm.pdf(x,mu+z0,sigma)*delta_s;
+    p_old[0] = sum(tx[0][x>=bound[0]]);
+    p_new[0] = sum(tx[0][x<=-bound[0]]);
+    # compute STD(r) for the current time
+    s_r = sigma_r;
+    s_f = sigma_f;
+    # compute STD(r+f) for the current time
+    s_comb = sigma;
+    # compute E[r|(r+f)]
+    mu_r_cond = mu_r*t[0]+rho*s_r*(bound[0]-t[0]*(mu_r+mu_f))/s_comb;
+    mu_f_cond = mu_f*t[0]+rhoF*s_f*(bound[0]-t[0]*(mu_r+mu_f))/s_comb;
+    # compute STD[r|(r+f)]
+    s_r_cond = s_r*sqrt(1-rho**2);
+    s_f_cond = s_f*sqrt(1-rhoF**2);
+    
+    #p_know[0] = p_old[0]*stats.norm.sf(f_bound,mu_f_cond,s_f_cond)+p_old[0]*stats.norm.cdf(r_bound,mu_r_cond,s_r_cond);
+    p_remember[0] = p_old[0]*stats.norm.sf(r_bound,mu_r_cond,s_r_cond);
+    # remove from consideration any particles that already hit the bound
+    tx[0]*=(abs(x)<bound[0]);
+    for i in range(1,len(t)):
+        #tx[i] = convolve(tx[i-1],kernel,'same');
+        # convolve the particle distribution from the previous timestep
+        # with the diffusion kernel (using Fourier domain convolution)
+        if(use_fftw):
+            tx[i] = abs(ifftshift(fftw.ifft(fftw.fft(tx[i-1])*ft_kernel)));
+        else:
+            tx[i] = abs(ifftshift(ifft(fft(tx[i-1])*ft_kernel)));
+
+        p_pos = tx[i][x>=bound[i]]; # probability of each particle position above the upper bound
+        x_pos = x[x>=bound[i]];     # location of each particle position above the upper bound
+
+        p_old[i] = sum(p_pos); # total probability that particle crosses upper bound
+        p_new[i] = sum(tx[i][x<=-bound[i]]); # probability that particle crosses lower bound
+        
+        # compute STD(r) for the current time
+        s_r = sqrt(2*d_r*t[i]);
+        s_f = sqrt(2*d_f*t[i]);
+        # compute STD[r|(r+f)]
+        s_r_cond = s_r*sqrt(1-rho**2);
+        s_f_cond = s_f*sqrt(1-rhoF**2);
+        # compute E[r|(r+f)]
+        mu_r_cond = mu_r*t[i]+(x_pos-t[i]*(mu_r+mu_f)-z0)*rho**2;
+        mu_f_cond = mu_f*t[i]+(x_pos-t[i]*(mu_r+mu_f)-z0)*rhoF**2;
+
+        #p_know[i] = sum(p_pos*stats.norm.sf(f_bound,mu_f_cond,s_f_cond))+sum(p_pos*stats.norm.cdf(r_bound,mu_r_cond,s_r_cond));
+        p_remember[i] = sum(p_pos*stats.norm.sf(r_bound,mu_r_cond,s_r_cond));
+        # remove from consideration any particles that already hit the bound
+        tx[i]*=(abs(x)<bound[i]);
+
+    #p_remember = p_old-p_know;
+    p_know = p_old-p_remember;
+    
+    ######################################################################################
+    # determine the proportion of new, remember and know responses by confidence
+    # determine the time points corresponding to quartiles within the overall distribution of remember and know responses
+
+    rem = zeros((n+1,1));
+    know = zeros((n+1,1));
+    new = zeros((n+1,1));
+    quant_rem = zeros((n+1,size(QUANT)));
+    quant_know = zeros((n+1,size(QUANT)));
+    quant_new = zeros((n+1,size(QUANT)));
+     
+    for i,hi_edge in enumerate(t_C):
+        # find the distribution bounds for the current confidence level
+        if(i==0):
+            lo_edge = 0;
+        else:
+            lo_edge = t_C[i-1];         
+        
+        # compute the CDF for this quantile
+        #prob_rem = p_remember[logical_and(t>=lo_edge,t<hi_edge)];
+        prob_rem = p_remember[lo_edge:hi_edge];
+        rem[i] = prob_rem.sum()
+        prob_rem = cumsum(prob_rem/(rem[i]+EPS));
+        
+        
+        #prob_know = p_know[logical_and(t>=lo_edge,t<hi_edge)];
+        prob_know = p_know[lo_edge:hi_edge];
+        know[i] = prob_know.sum();
+        prob_know = cumsum(prob_know/(know[i]+EPS));
+        
+        prob_new = p_new[lo_edge:hi_edge];
+        new[i] = prob_new.sum();
+        prob_new = cumsum(prob_new/(new[i]+EPS));
+        
+        
+        # find the index of the CDF value that most closely matches the desire quantile rank.
+        # the time associated with that index is the quantile value
+        t_temp = t[lo_edge:hi_edge];
+        quant_rem[i,:] = array([t_temp[argmax(abs(prob_rem>q))] for q in QUANT]);
+        quant_know[i,:] = array([t_temp[argmax(abs(prob_know>q))] for q in QUANT]); 
+        quant_new[i,:] = array([t_temp[argmax(abs(prob_new>q))] for q in QUANT]);
+        quant_rem[i,0] = 0;
+        quant_know[i,0] = 0;
+        quant_new[i,0] = 0;
+    
+    prob_rem = p_remember[t_C[n-1]:];
+    rem[n] = prob_rem.sum();
+    prob_rem = cumsum(prob_rem/rem[n]);
+    
+    prob_know = p_know[t_C[n-1]:];
+    know[n] = prob_know.sum();
+    prob_know = cumsum(prob_know/know[n]);
+    
+    prob_new = p_new[t_C[n-1]:];
+    new[n] = prob_new.sum();
+    prob_new = cumsum(prob_new/new[n]);
+    
+    t_temp = t[t_C[n-1]:];
+    quant_rem[n,:] = array([t_temp[argmax(abs(prob_rem>q))] for q in QUANT]);
+    quant_know[n,:] = array([t_temp[argmax(abs(prob_know>q))] for q in QUANT]); 
+    quant_new[n,:] = array([t_temp[argmax(abs(prob_new>q))] for q in QUANT]);
+    quant_rem[n,0] = 0;
+    quant_know[n,0] = 0;
+    quant_new[n,0] = 0;
+        
+    data = hstack((rem,know,new));
+    return quant_rem,quant_know,quant_new,data;

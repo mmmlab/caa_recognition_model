@@ -377,3 +377,109 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
     # To minimize compute_chi/compute_nll (excluding the "new" data)
     data = hstack((rem,know));
     return quant_rem,quant_know,data;
+
+def predicted_proportions_NC(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fftw=True):
+    # compute process SD
+    sigma_r = sqrt(2*d_r*DELTA_T);
+    sigma_f = sqrt(2*d_f*DELTA_T);
+    sigma = sqrt(sigma_r**2+sigma_f**2);
+
+    # compute the correlation for r given r+f
+    rho = sigma_r/sigma;
+    rhoF = sigma_f/sigma;
+
+    t = linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
+    bound = exp(-tc_bound*t); # this is the collapsing bound
+     
+    mu = (mu_r+mu_f)*DELTA_T; # this is the average overall drift rate, with r = 'recall' and f = 'familiar'
+    # compute the bounding limit of the space domain. This should include at least 99% of the probability mass when the particle is at the largest possible bound
+    space_lim = max(bound)+3*sigma;
+    delta_s = 2*space_lim/NR_SSTEPS;
+    # finally, construct the space axis
+    x = linspace(-space_lim,space_lim,NR_SSTEPS);
+    # compute the diffusion kernel
+    kernel = stats.norm.pdf(x,mu,sigma)*delta_s;
+    # ... and its Fourier transform. We'll use this to compute FD convolutions
+    if(use_fftw):
+        ft_kernel = fftw.fft(kernel);
+    else:
+        ft_kernel = fft(kernel);
+    tx = zeros((len(t),len(x)));
+    #p_know = zeros(shape(t));
+    p_remember = zeros(shape(t));
+    p_old = zeros(shape(t));
+    p_new = zeros(shape(t));
+
+    # take care of the first timestep
+    tx[0] = stats.norm.pdf(x,mu+z0,sigma)*delta_s;
+    p_old[0] = sum(tx[0][x>=bound[0]]);
+    p_new[0] = sum(tx[0][x<=-bound[0]]);
+    # compute STD(r) for the current time
+    s_r = sigma_r;
+    s_f = sigma_f;
+    # compute STD(r+f) for the current time
+    s_comb = sigma;
+    # compute E[r|(r+f)]
+    mu_r_cond = mu_r*t[0]+rho*s_r*(bound[0]-t[0]*(mu_r+mu_f))/s_comb;
+    mu_f_cond = mu_f*t[0]+rhoF*s_f*(bound[0]-t[0]*(mu_r+mu_f))/s_comb;
+    # compute STD[r|(r+f)]
+    s_r_cond = s_r*sqrt(1-rho**2);
+    s_f_cond = s_f*sqrt(1-rhoF**2);
+    
+    #p_know[0] = p_old[0]*stats.norm.sf(f_bound,mu_f_cond,s_f_cond)+p_old[0]*stats.norm.cdf(r_bound,mu_r_cond,s_r_cond);
+    p_remember[0] = p_old[0]*stats.norm.sf(r_bound,mu_r_cond,s_r_cond);
+    # remove from consideration any particles that already hit the bound
+    tx[0]*=(abs(x)<bound[0]);
+    for i in range(1,len(t)):
+        #tx[i] = convolve(tx[i-1],kernel,'same');
+        # convolve the particle distribution from the previous timestep
+        # with the diffusion kernel (using Fourier domain convolution)
+        if(use_fftw):
+            tx[i] = abs(ifftshift(fftw.ifft(fftw.fft(tx[i-1])*ft_kernel)));
+        else:
+            tx[i] = abs(ifftshift(ifft(fft(tx[i-1])*ft_kernel)));
+
+        p_pos = tx[i][x>=bound[i]]; # probability of each particle position above the upper bound
+        x_pos = x[x>=bound[i]];     # location of each particle position above the upper bound
+
+        p_old[i] = sum(p_pos); # total probability that particle crosses upper bound
+        p_new[i] = sum(tx[i][x<=-bound[i]]); # probability that particle crosses lower bound
+        
+        # compute STD(r) for the current time
+        s_r = sqrt(2*d_r*t[i]);
+        s_f = sqrt(2*d_f*t[i]);
+        # compute STD[r|(r+f)]
+        s_r_cond = s_r*sqrt(1-rho**2);
+        s_f_cond = s_f*sqrt(1-rhoF**2);
+        # compute E[r|(r+f)]
+        mu_r_cond = mu_r*t[i]+(x_pos-t[i]*(mu_r+mu_f)-z0)*rho**2;
+        mu_f_cond = mu_f*t[i]+(x_pos-t[i]*(mu_r+mu_f)-z0)*rhoF**2;
+        # remove from consideration any particles that already hit the bound
+        tx[i]*=(abs(x)<bound[i]);
+        
+        # old method for computing p_remember
+        # p_remember[i] = sum(p_pos*stats.norm.sf(r_bound,mu_r_cond,s_r_cond));
+        # new method for computin p_remember
+        mu_r_delta = mu_r_cond+mu_r*deltaT;
+        s_r_delta = sqrt(s_r_cond**2+2*d_r*deltaT);
+        p_remember[i] = sum(p_pos*stats.norm.sf(r_bound,mu_r_delta,s_r_delta));
+
+    #p_remember = p_old-p_know;
+    p_know = p_old-p_remember;
+    
+    # TO DO:
+    ## Added by Melchi on 6/15/2015 ##
+    # The conditional distribution of position for the 'recall' component of the
+    # particle (conditioned on time of new/old decision and/or value of r+f) has
+    # already been computed. It's a normal distribution with mean mu_r_cond and
+    # standard deviation s_r_cond. What remains to be done is to compute the
+    # distribtuion of positions for the recall component after deltaT additional
+    # seconds have elapsed
+    # 1. The resulting distribution should have mean = mu_r_cond + (mu_r*deltaT)
+    # 2. The resulting distribution should have SD = sqrt(s_r_cond^2+2*d_r*deltaT)
+    ######################################################################################
+    # determine the proportion of new, remember and know responses by confidence
+    # determine the time points corresponding to quartiles within the overall distribution of remember and know responses
+
+    
+    return p_remember,p_know,p_new,t;
