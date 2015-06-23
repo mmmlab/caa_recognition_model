@@ -273,8 +273,9 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
     mu_mvn = array([mu_r_delta,mu_comb_delta_c+bound[0]]);
     sigma_mvn = array([[s2_r_delta,cov_delta],[cov_delta,s2_comb_delta]]);
     for j in range(1,len(c)):
-        p_know_conf[i,j-1] = stats.mvn.mvnun([-INF_PROXY,clims[j-1]],[r_bound,clims[j]],mu_mvn,sigma,mvn);
-        p_rem_conf[i,j-1] = stats.mvn.mvnun([r_bound,clims[j-1]],[INF_PROXY,clims[j]],mu_mvn,sigma,mvn);
+        # Note that the clims appear in descending order, from highest to lowest value
+        p_know_conf[i,j-1] = p_old[0]*stats.mvn.mvnun([-INF_PROXY,clims[j]],[r_bound,clims[j-1]],mu_mvn,sigma,mvn);
+        p_rem_conf[i,j-1] = p_old[0]*stats.mvn.mvnun([r_bound,clims[j]],[INF_PROXY,clims[j-1]],mu_mvn,sigma,mvn);
     
     for i in range(1,len(t)):
         #tx[i] = convolve(tx[i-1],kernel,'same');
@@ -305,7 +306,7 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
         
         # old method for computing p_remember
         # p_remember[i] = sum(p_pos*stats.norm.sf(r_bound,mu_r_cond,s_r_cond));
-        # new method for computin p_remember
+        # new method for computing p_remember
         mu_r_delta[i] = mu_r_cond+mu_r*deltaT;
         s_r_delta[i] = sqrt(s_r_cond**2+2*d_r*deltaT);
         p_remember[i] = sum(p_pos*stats.norm.sf(r_bound,mu_r_delta[i],s_r_delta[i]));
@@ -320,8 +321,8 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
         #   defined by the constant "r" and "conf" bounds
         mu_mvn = array([mu_r_delta,mu_comb_delta_c+bound[i]]);
         for j in range(1,len(c)):
-            p_know_conf[i,j-1] = stats.mvn.mvnun([-INF_PROXY,clims[j-1]],[r_bound,clims[j]],mu_mvn,sigma,mvn);
-            p_rem_conf[i,j-1] = stats.mvn.mvnun([r_bound,clims[j-1]],[INF_PROXY,clims[j]],mu_mvn,sigma,mvn);
+            p_know_conf[i,j-1] = p_old[i]*stats.mvn.mvnun([-INF_PROXY,clims[j]],[r_bound,clims[j-1]],mu_mvn,sigma,mvn);
+            p_rem_conf[i,j-1] = p_old[i]*stats.mvn.mvnun([r_bound,clims[j]],[INF_PROXY,clims[j-1]],mu_mvn,sigma,mvn);
 
     #p_remember = p_old-p_know;
     p_know = p_old-p_remember;
@@ -465,7 +466,10 @@ def predicted_proportions_NC(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_ff
     s_f_cond = s_f*sqrt(1-rhoF**2);
     
     #p_know[0] = p_old[0]*stats.norm.sf(f_bound,mu_f_cond,s_f_cond)+p_old[0]*stats.norm.cdf(r_bound,mu_r_cond,s_r_cond);
-    p_remember[0] = p_old[0]*stats.norm.sf(r_bound,mu_r_cond,s_r_cond);
+    #p_remember[0] = p_old[0]*stats.norm.sf(r_bound,mu_r_cond,s_r_cond);
+    mu_r_delta = mu_r_cond+mu_r*deltaT;
+    s_r_delta = sqrt(s_r_cond**2+2*d_r*deltaT);
+    p_remember[0] = sum(p_pos*stats.norm.sf(r_bound,mu_r_delta,s_r_delta));
     # remove from consideration any particles that already hit the bound
     tx[0]*=(abs(x)<bound[0]);
     for i in range(1,len(t)):
