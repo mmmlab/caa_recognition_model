@@ -26,7 +26,7 @@ miss = numpy.loadtxt('data/miss.txt');  # load miss RTs
 #know_fa = numpy.loadtxt('data_collapsed/knowRT_fa.txt');  # load know RTs for false alarms
 #CR = numpy.loadtxt('data_collapsed/CR.txt');  # load CR RTs 
 #miss = numpy.loadtxt('data_collapsed/miss.txt');  # load miss RTs 
-
+INF_PROXY   = 100; # a value used to provide very large but finite bounds for mvn integration
 EPS         = 1e-10 # a very small value (used for numerical stability)
 NR_THREADS  = 1;    # this is for multithreaded fft
 DELTA_T     = 0.05;  # size of discrete time increment (sec.)
@@ -199,6 +199,8 @@ def compute_chi_conf(remH,knowH,missH,remFA,knowFA,crFA,rem_quantiles_old,know_q
     return chi_conf;
 
 def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fftw=True):
+    # make c (the confidence levels) an array in case it is a scalar value
+    c = array([c]);
     # compute process SD
     sigma_r = sqrt(2*d_r*DELTA_T);
     sigma_f = sqrt(2*d_f*DELTA_T);
@@ -229,6 +231,14 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
     p_remember = zeros(shape(t));
     p_old = zeros(shape(t));
     p_new = zeros(shape(t));
+    
+    p_rem_conf = zeros((n+1,size(t))); 
+    p_know_conf = zeros((n+1,size(t)));
+    
+    #######
+    mu_r_delta = zeros(shape(t));
+    s_r_delta = zeros(shape(t));
+    #######
 
     # take care of the first timestep
     tx[0] = stats.norm.pdf(x,mu+z0,sigma)*delta_s;
@@ -250,6 +260,22 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
     p_remember[0] = p_old[0]*stats.norm.sf(r_bound,mu_r_cond,s_r_cond);
     # remove from consideration any particles that already hit the bound
     tx[0]*=(abs(x)<bound[0]);
+    
+    # form an array consisting of the appropriate (upper) integration limits
+    clims = array([INF_PROXY]+c.tolist());
+    # compute the paramteres of the bivariate distribution of particle locations after
+    # deltaT seconds
+    mu_r_delta = mu_r_cond+mu_r*deltaT;
+    mu_comb_delta_c = (mu_r+mu_f)*deltaT;
+    s2_r_delta = s_r_cond**2+2*d_r*deltaT;
+    s2_comb_delta = 2*deltaT*(d_r+d_f);
+    cov_delta = s2_r_delta;
+    mu_mvn = array([mu_r_delta,mu_comb_delta_c+bound[0]]);
+    sigma_mvn = array([[s2_r_delta,cov_delta],[cov_delta,s2_comb_delta]]);
+    for j in range(1,len(c)):
+        p_know_conf[i,j-1] = stats.mvn.mvnun([-INF_PROXY,clims[j-1]],[r_bound,clims[j]],mu_mvn,sigma,mvn);
+        p_rem_conf[i,j-1] = stats.mvn.mvnun([r_bound,clims[j-1]],[INF_PROXY,clims[j]],mu_mvn,sigma,mvn);
+    
     for i in range(1,len(t)):
         #tx[i] = convolve(tx[i-1],kernel,'same');
         # convolve the particle distribution from the previous timestep
@@ -280,9 +306,22 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
         # old method for computing p_remember
         # p_remember[i] = sum(p_pos*stats.norm.sf(r_bound,mu_r_cond,s_r_cond));
         # new method for computin p_remember
-        mu_r_delta = mu_r_cond+mu_r*deltaT;
-        s_r_delta = sqrt(s_r_cond**2+2*d_r*deltaT);
-        p_remember[i] = sum(p_pos*stats.norm.sf(r_bound,mu_r_delta,s_r_delta));
+        mu_r_delta[i] = mu_r_cond+mu_r*deltaT;
+        s_r_delta[i] = sqrt(s_r_cond**2+2*d_r*deltaT);
+        p_remember[i] = sum(p_pos*stats.norm.sf(r_bound,mu_r_delta[i],s_r_delta[i]));
+        
+        # (6/23/2015) New method for computing p_know, p_remember, and confidences
+        # simultaneously using cumulative bivariate normal integral.
+        # The idea is to:
+        #   1. model the bivariate distribution of (r,r+f) particle locations deltaT
+        #   seconds after the old/new decision
+        #   2. use the multivariate normal integral function (stats.mvn.mvnun) to compute
+        #   the probability that the particle falls into any of the relevant regions
+        #   defined by the constant "r" and "conf" bounds
+        mu_mvn = array([mu_r_delta,mu_comb_delta_c+bound[i]]);
+        for j in range(1,len(c)):
+            p_know_conf[i,j-1] = stats.mvn.mvnun([-INF_PROXY,clims[j-1]],[r_bound,clims[j]],mu_mvn,sigma,mvn);
+            p_rem_conf[i,j-1] = stats.mvn.mvnun([r_bound,clims[j-1]],[INF_PROXY,clims[j]],mu_mvn,sigma,mvn);
 
     #p_remember = p_old-p_know;
     p_know = p_old-p_remember;
@@ -308,21 +347,20 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
     quant_know = zeros((n+1,size(QUANT)));
     quant_new = zeros((n+1,size(QUANT)));
     
-    p_rem_conf = zeros((n+1,size(t))); 
-    p_know_conf = zeros((n+1,size(t)));
-    p_new_conf = zeros((n+1,size(t)));
-                        
+    # The sigma values below represent the distribution of the change in particle position
+    # since the old/new decision.
     sigma_r_conf = sqrt(2*d_r*deltaT);
     sigma_f_conf = sqrt(2*d_f*deltaT);
     sigma_conf = sqrt(sigma_r_conf**2+sigma_f_conf**2);
     
     mu_conf = (mu_r+mu_f)*deltaT;
-    
-    if (n==1):
-        c = array([c]);
 
     for i in range(n): 
-        
+        # Note: in the code below, we assume that the location of the particle at the time
+        # of the old/new decision is known exactly (i.e., r(t)+f(t) = bound(t)).
+        # This assumption makes computing the location at the time of the confidence
+        # judgment easy, since we only need to worry about the dynamics of the drift since
+        # the old/new decision: the resulting mean is mu_conf+bound and the SD is sigma_conf.
         if (i==0):
             p_rem_conf[i] = p_remember*stats.norm.sf(c[i],mu_conf+bound,sigma_conf);
             p_know_conf[i] = p_know*stats.norm.sf(c[i],mu_conf+bound,sigma_conf);
