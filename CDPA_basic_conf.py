@@ -239,8 +239,10 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
     mu_r_delta = zeros(shape(t));
     s_r_delta = zeros(shape(t));
     #######
-
-    # take care of the first timestep
+    
+    ############################################
+    ## take care of the first timestep #########
+    ############################################
     tx[0] = stats.norm.pdf(x,mu+z0,sigma)*delta_s;
     p_old[0] = sum(tx[0][x>=bound[0]]);
     p_new[0] = sum(tx[0][x<=-bound[0]]);
@@ -276,6 +278,10 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
         # Note that the clims appear in descending order, from highest to lowest value
         p_know_conf[i,j-1] = p_old[0]*stats.mvn.mvnun([-INF_PROXY,clims[j]],[r_bound,clims[j-1]],mu_mvn,sigma,mvn);
         p_rem_conf[i,j-1] = p_old[0]*stats.mvn.mvnun([r_bound,clims[j]],[INF_PROXY,clims[j-1]],mu_mvn,sigma,mvn);
+        
+    #######################################
+    ## take care of subsequent timesteps ##
+    #######################################
     
     for i in range(1,len(t)):
         #tx[i] = convolve(tx[i-1],kernel,'same');
@@ -323,6 +329,8 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
         for j in range(1,len(c)):
             p_know_conf[i,j-1] = p_old[i]*stats.mvn.mvnun([-INF_PROXY,clims[j]],[r_bound,clims[j-1]],mu_mvn,sigma,mvn);
             p_rem_conf[i,j-1] = p_old[i]*stats.mvn.mvnun([r_bound,clims[j]],[INF_PROXY,clims[j-1]],mu_mvn,sigma,mvn);
+        
+        p_remember[i] = sum(p_rem_conf[i]);
 
     #p_remember = p_old-p_know;
     p_know = p_old-p_remember;
