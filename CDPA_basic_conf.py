@@ -7,16 +7,18 @@ import pyfftw
 import fftw_test as fftw
 from multinomial_funcs import multinom_loglike,chi_square_gof
 
+data_path = 'neha/data/'; # this is the base path for the data files
+
 ## Start by reading in the data.
 # the reason to do this first is that, in order to be efficient,
 # we don't want to represent any more of the time axis than we have to.
 
-remember_hit = numpy.loadtxt('data/remRT_hit.txt'); # load remember RTs for hits
-know_hit = numpy.loadtxt('data/knowRT_hit.txt'); # load know RTs for hits
-remember_fa = numpy.loadtxt('data/remRT_fa.txt'); # load remember RTs for false alarms
-know_fa = numpy.loadtxt('data/knowRT_fa.txt');  # load know RTs for false alarms
-CR = numpy.loadtxt('data/CR.txt');  # load CR RTs 
-miss = numpy.loadtxt('data/miss.txt');  # load miss RTs
+remember_hit = numpy.loadtxt(data_path+'remRT_hit.txt'); # load remember RTs for hits
+know_hit = numpy.loadtxt(data_path+'knowRT_hit.txt'); # load know RTs for hits
+remember_fa = numpy.loadtxt(data_path+'remRT_fa.txt'); # load remember RTs for false alarms
+know_fa = numpy.loadtxt(data_path+'knowRT_fa.txt');  # load know RTs for false alarms
+CR = numpy.loadtxt(data_path+'CR.txt');  # load CR RTs 
+miss = numpy.loadtxt(data_path+'miss.txt');  # load miss RTs
 
 
 ## read in collapsed data 
@@ -26,7 +28,7 @@ miss = numpy.loadtxt('data/miss.txt');  # load miss RTs
 #know_fa = numpy.loadtxt('data_collapsed/knowRT_fa.txt');  # load know RTs for false alarms
 #CR = numpy.loadtxt('data_collapsed/CR.txt');  # load CR RTs 
 #miss = numpy.loadtxt('data_collapsed/miss.txt');  # load miss RTs 
-INF_PROXY   = 100; # a value used to provide very large but finite bounds for mvn integration
+INF_PROXY   = 20; # a value used to provide very large but finite bounds for mvn integration
 EPS         = 1e-10 # a very small value (used for numerical stability)
 NR_THREADS  = 1;    # this is for multithreaded fft
 DELTA_T     = 0.05;  # size of discrete time increment (sec.)
@@ -201,6 +203,8 @@ def compute_chi_conf(remH,knowH,missH,remFA,knowFA,crFA,rem_quantiles_old,know_q
 def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fftw=True):
     # make c (the confidence levels) an array in case it is a scalar value
     c = array(c,ndmin=1);
+    # form an array consisting of the appropriate (upper) integration limits
+    clims = hstack(([INF_PROXY],c,[-INF_PROXY]));
     # compute process SD
     sigma_r = sqrt(2*d_r*DELTA_T);
     sigma_f = sqrt(2*d_f*DELTA_T);
@@ -208,7 +212,6 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
 
     # compute the correlation for r given r+f
     rho = sigma_r/sigma;
-    rhoF = sigma_f/sigma;
 
     t = linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
     bound = exp(-tc_bound*t); # this is the collapsing bound
@@ -228,17 +231,13 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
         ft_kernel = fft(kernel);
     tx = zeros((len(t),len(x)));
     #p_know = zeros(shape(t));
-    p_remember = zeros(shape(t));
+    #p_remember = zeros(shape(t));
     p_old = zeros(shape(t));
     p_new = zeros(shape(t));
     
     p_rem_conf = zeros((n+1,size(t))); 
     p_know_conf = zeros((n+1,size(t)));
     
-    # #######
-    # mu_r_delta = zeros(shape(t));
-    # s_r_delta = zeros(shape(t));
-    # #######
     
     ############################################
     ## take care of the first timestep #########
@@ -253,18 +252,14 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
     s_comb = sigma;
     # compute E[r|(r+f)]
     mu_r_cond = mu_r*t[0]+rho*s_r*(bound[0]-t[0]*(mu_r+mu_f))/s_comb;
-    mu_f_cond = mu_f*t[0]+rhoF*s_f*(bound[0]-t[0]*(mu_r+mu_f))/s_comb;
     # compute STD[r|(r+f)]
     s_r_cond = s_r*sqrt(1-rho**2);
-    s_f_cond = s_f*sqrt(1-rhoF**2);
     
     #p_know[0] = p_old[0]*stats.norm.sf(f_bound,mu_f_cond,s_f_cond)+p_old[0]*stats.norm.cdf(r_bound,mu_r_cond,s_r_cond);
-    p_remember[0] = p_old[0]*stats.norm.sf(r_bound,mu_r_cond,s_r_cond);
+    #p_remember[0] = p_old[0]*stats.norm.sf(r_bound,mu_r_cond,s_r_cond);
     # remove from consideration any particles that already hit the bound
     tx[0]*=(abs(x)<bound[0]);
     
-    # form an array consisting of the appropriate (upper) integration limits
-    clims = hstack(([INF_PROXY],c));
     # compute the paramteres of the bivariate distribution of particle locations after
     # deltaT seconds
     mu_r_delta = mu_r_cond+mu_r*deltaT;
@@ -274,14 +269,12 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
     cov_delta = s2_r_delta;
     mu_mvn = array([mu_r_delta,mu_comb_delta_c+bound[0]]);
     sigma_mvn = array([[s2_r_delta,cov_delta],[cov_delta,s2_comb_delta]]);
-    for j in range(1,len(c)):
+    for j in range(1,len(clims)):
         # Note that the clims appear in descending order, from highest to lowest value
-        # p_know_conf[0,j-1] = p_old[0]*stats.mvn.mvnun(array([-INF_PROXY,clims[j]]),array([r_bound,clims[j-1]]),mu_mvn,sigma_mvn);
-        # p_rem_conf[0,j-1] = p_old[0]*stats.mvn.mvnun(array([r_bound,clims[j]]),array([INF_PROXY,clims[j-1]]),mu_mvn,sigma_mvn);
-        KLL = array([-INF_PROXY,clims[j]]);
-        KUL = array([r_bound,clims[j-1]]);
-        RLL = array([r_bound,clims[j]]);
-        RUL = array([INF_PROXY,clims[j-1]]);
+        KLL = array([-INF_PROXY,clims[j]]);     # lower limit for 'know' class
+        KUL = array([r_bound,clims[j-1]]);      # upper limit for 'know' class
+        RLL = array([r_bound,clims[j]]);        # lower limit for 'remember' class
+        RUL = array([INF_PROXY,clims[j-1]]);    # upper limit for 'remember' class
         p_know_conf[j-1,0] = p_old[0]*stats.mvn.mvnun(KLL,KUL,mu_mvn,sigma_mvn)[0];
         p_rem_conf[j-1,0] = p_old[0]*stats.mvn.mvnun(RLL,RUL,mu_mvn,sigma_mvn)[0];
         
@@ -340,7 +333,7 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
         cov_delta = s2_r_delta;
         mu_mvn = array([mu_r_delta,mu_comb_delta_c+bound[i]]);
         sigma_mvn = array([[s2_r_delta,cov_delta],[cov_delta,s2_comb_delta]]);
-        for j in range(1,len(c)):
+        for j in range(1,len(clims)):
             KLL = array([-INF_PROXY,clims[j]]);
             KUL = array([r_bound,clims[j-1]]);
             RLL = array([r_bound,clims[j]]);
@@ -409,7 +402,6 @@ def predicted_proportions_NC(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_ff
     # remove from consideration any particles that already hit the bound
     tx[0]*=(abs(x)<bound[0]);
     for i in range(1,len(t)):
-        #tx[i] = convolve(tx[i-1],kernel,'same');
         # convolve the particle distribution from the previous timestep
         # with the diffusion kernel (using Fourier domain convolution)
         if(use_fftw):
