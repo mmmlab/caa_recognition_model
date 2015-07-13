@@ -50,52 +50,12 @@ R = 0.1; D = 0.05; L = 0.1; Z = 0.0;
 
 fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
 
-param_bounds = [(0.0,0.1),(0.0,1.0),(0.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(0.0,1.0),(-1.0,1.0),(EPS,1.0)];
+param_bounds = [(0.0,1.0),(0.0,1.0),(0.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(0.0,1.0),(-1.0,1.0),(EPS,1.0)];
 # c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,delta_t = params;
 
 def find_ml_params():
     obj_func = lambda model_params:compute_model_gof(model_params,rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1],nr_quantiles=4);
     return optimize.differential_evolution(obj_func,param_bounds);
-
-
-def compute_nll(parameters,remember_hit=remember_hit,know_hit=know_hit,remember_fa=remember_fa,know_fa=know_fa,miss=miss,CR=CR):
-    
-    c = array([0.64990402,parameters]);
-    #c = parameters[0]
-    mu_r = 0.13935456; 
-    mu_f = 0.01447192;  
-    d_r = 0.05391228; 
-    d_f = 0.11416173; 
-    tc_bound = 0.28585528; 
-    r_bound = 0.35386679; 
-    z0 = -0.09009103; 
-    mu_r0 = -0.02782681;  
-    mu_f0 = -0.14973519; 
-    deltaT = 0.43406613;
-    
-    nll = 0;
-
-    remH_RT,remH_conf = numpy.split(remember_hit,2,axis=1);
-    knowH_RT,knowH_conf = numpy.split(know_hit,2,axis=1);
-    remFA_RT,remFA_conf = numpy.split(remember_fa,2,axis=1);
-    knowFA_RT,knowFA_conf = numpy.split(know_fa,2,axis=1);
-    CR_RT,CR_conf = numpy.split(CR,2,axis=1);
-    miss_RT,miss_conf = numpy.split(miss,2,axis=1);
-        
-    rem_quantiles_old,know_quantiles_old,data_old = predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT);
-    rem_quantiles_new,know_quantiles_new,data_new = predicted_proportions(c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT);
-    
-    for i in range(n+1):
-        rem_old = remH_RT[remH_conf==n-i];
-        know_old = knowH_RT[knowH_conf==n-i];
-        miss_old = miss_RT[miss_conf==n-i];
-       
-        rem_new = remFA_RT[remFA_conf==n-i];
-        know_new = knowFA_RT[knowFA_conf==n-i];
-        CR_new = CR_RT[CR_conf==n-i];
-          
-        nll+= compute_nll_conf(rem_old,know_old,miss_old,rem_new,know_new,CR_new,rem_quantiles_old[i],know_quantiles_old[i],rem_quantiles_new[i],know_quantiles_new[i],data_old[i],data_new[i]);    
-    return nll;
 
 
 def compute_nll_conf(remH,knowH,missH,remFA,knowFA,crFA,rem_quantiles_old,know_quantiles_old,rem_quantiles_new,know_quantiles_new,data_old,data_new):
@@ -124,57 +84,6 @@ def compute_nll_conf(remH,knowH,missH,remFA,knowFA,crFA,rem_quantiles_old,know_q
     nll_new = -multinom_loglike(x_new,new,p_new)
     nll_conf = nll_old+nll_new;
     return nll_conf;
-
-def compute_chi(parameters,remember_hit=remember_hit,know_hit=know_hit,remember_fa=remember_fa,know_fa=know_fa,miss=miss,CR=CR):
-    #c = c = parameters[0:n];
-    #mu_r = parameters[n+0]; 
-    #mu_f = parameters[n+1]; 
-    #d_r = parameters[n+2]; 
-    #d_f = parameters[n+3]; 
-    #tc_bound = parameters[n+4]; 
-    #r_bound = parameters[n+5];
-    #z0 = parameters[n+6]; 
-    #mu_r0 = parameters[n+7]; 
-    #mu_f0 = parameters[n+8]; 
-    #deltaT = parameters[n+9];
-
-    c = c = parameters[0:n];
-    mu_r = parameters[n+0]; #0.13935456; 
-    mu_f = parameters[n+1]; #0.01447192; 
-    d_r = parameters[n+2]; #0.05391228; 
-    d_f = parameters[n+3]; #0.11416173;  
-    tc_bound = 0.28585528; 
-    r_bound = 0.35386679; 
-    z0 = -0.09009103; 
-    mu_r0 = -0.02782681;  
-    mu_f0 = -0.14973519; 
-    deltaT = parameters[n+4];
-    
-
-    chi = 0;
-
-    remH_RT,remH_conf = numpy.split(remember_hit,2,axis=1);
-    knowH_RT,knowH_conf = numpy.split(know_hit,2,axis=1);
-    remFA_RT,remFA_conf = numpy.split(remember_fa,2,axis=1);
-    knowFA_RT,knowFA_conf = numpy.split(know_fa,2,axis=1);
-    CR_RT,CR_conf = numpy.split(CR,2,axis=1);
-    miss_RT,miss_conf = numpy.split(miss,2,axis=1);
-    rem_quantiles_old,know_quantiles_old,data_old = predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT);
-    rem_quantiles_new,know_quantiles_new,data_new = predicted_proportions(c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT);
-    
-    for i in range(n+1):
-        rem_old = remH_RT[remH_conf==n-i];
-        know_old = knowH_RT[knowH_conf==n-i];
-        miss_old = miss_RT[miss_conf==n-i];
-        
- 
-        rem_new = remFA_RT[remFA_conf==n-i];
-        know_new = knowFA_RT[knowFA_conf==n-i];
-        CR_new = CR_RT[CR_conf==n-i];
-    
-        chi+= compute_chi_conf(rem_old,know_old,miss_old,rem_new,know_new,CR_new,rem_quantiles_old[i],know_quantiles_old[i],rem_quantiles_new[i],know_quantiles_new[i],data_old[i],data_new[i]);    
-    return chi;
-
 
 def compute_chi_conf(remH,knowH,missH,remFA,knowFA,crFA,rem_quantiles_old,know_quantiles_old,rem_quantiles_new,know_quantiles_new,data_old,data_new):
     
