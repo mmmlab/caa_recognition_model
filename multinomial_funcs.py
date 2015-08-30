@@ -19,4 +19,5 @@ def multinom_loglike(x,n,p):
     return gammaln(n+1)-pl.sum(gammaln(x+1))+pl.sum(x*pl.log(p));
 
 def chi_square_gof(x,n,p):
+    p = pl.clip(p,EPS,None);
     return sum((x-n*p)**2/(n*p));
