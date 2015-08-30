@@ -290,6 +290,10 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
 
         p_pos = tx[i][x>=bound[i]]; # probability of each particle position above the upper bound
         x_pos = x[x>=bound[i]];     # location of each particle position above the upper bound
+        
+        # compute the expected value of a particle that just exceeded the bound
+        # during the last time interval
+        comb_est = (dot(p_pos,x_pos)+EPS)/(sum(p_pos)+EPS); 
 
         p_old[i] = sum(p_pos); # total probability that particle crosses upper bound
         p_new[i] = sum(tx[i][x<=-bound[i]]); # probability that particle crosses lower bound
@@ -301,7 +305,7 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
         s_r_cond = s_r*sqrt(1-rho**2);
         s_f_cond = s_f*sqrt(1-(sigma_f/sigma)**2);
         # compute E[r|(r+f)]
-        mu_r_cond = mu_r*t[i]+(bound[i]-t[i]*(mu_r+mu_f)-z0)*rho**2;
+        mu_r_cond = mu_r*t[i]+(comb_est-t[i]*(mu_r+mu_f)-z0)*rho**2;
         # remove from consideration any particles that already hit the bound
         tx[i]*=(abs(x)<bound[i]);
         
@@ -318,7 +322,7 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
         # compute the parameters of the bivariate distribution of particle
         # locations deltaT seconds after old/new decision
         mu_r_delta = mu_r_cond+mu_r*deltaT;
-        mu_comb_delta = (mu_r+mu_f)*deltaT+bound[i];
+        mu_comb_delta = (mu_r+mu_f)*deltaT+comb_est;
         s2_r_delta = s_r_cond**2+2*d_r*deltaT;
         s2_f_delta = s_f_cond**2+2*d_f*deltaT;
         s2_comb_delta = s2_r_delta+s2_f_delta;
