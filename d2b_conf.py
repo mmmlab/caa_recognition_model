@@ -28,7 +28,7 @@ miss = numpy.loadtxt(data_path+'miss.txt');  # load miss RTs
 #know_fa = numpy.loadtxt('data_collapsed/knowRT_fa.txt');  # load know RTs for false alarms
 #CR = numpy.loadtxt('data_collapsed/CR.txt');  # load CR RTs 
 #miss = numpy.loadtxt('data_collapsed/miss.txt');  # load miss RTs 
-INF_PROXY   = 20; # a value used to provide very large but finite bounds for mvn integration
+INF_PROXY   = 10; # a value used to provide very large but finite bounds for mvn integration
 EPS         = 1e-10 # a very small value (used for numerical stability)
 NR_THREADS  = 1;    # this is for multithreaded fft
 DELTA_T     = 0.05;  # size of discrete time increment (sec.)
@@ -49,6 +49,8 @@ R = 0.1; D = 0.05; L = 0.1; Z = 0.0;
 
 
 fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
+
+params_est = [(0.7233685,0.08959858),0.50357936,0.96055488,0.29500501,0.00464397,1.0,0.67084697,-0.74701904,0.22969753];
 
 param_bounds = [(0.0,1.0),(0.0,1.0),(0.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(0.0,1.0),(-1.0,1.0),(EPS,1.0)];
 # c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,delta_t = params;
@@ -240,24 +242,28 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
     # compute STD(r+f) for the current time
     s_comb = sigma;
     # compute E[r|(r+f)]
-    mu_r_cond = mu_r*t[0]+rho*s_r*(bound[0]-t[0]*(mu_r+mu_f))/s_comb;
+    #mu_r_cond = mu_r*t[0]+rho*s_r*(bound[0]-t[0]*(mu_r+mu_f))/s_comb;
+    mu_r_cond = mu_r*t[0]+(bound[0]-t[0]*(mu_r+mu_f)-z0)*rho**2;
     # compute STD[r|(r+f)]
     s_r_cond = s_r*sqrt(1-rho**2);
+    s_f_cond = s_f*sqrt(1-(sigma_f/sigma)**2);
     
-    #p_know[0] = p_old[0]*stats.norm.sf(f_bound,mu_f_cond,s_f_cond)+p_old[0]*stats.norm.cdf(r_bound,mu_r_cond,s_r_cond);
-    #p_remember[0] = p_old[0]*stats.norm.sf(r_bound,mu_r_cond,s_r_cond);
     # remove from consideration any particles that already hit the bound
     tx[0]*=(abs(x)<bound[0]);
     
     ############################################################################
     # compute the parameters of the bivariate distribution of particle locations
     # deltaT seconds after old/new decision
+    
     mu_r_delta = mu_r_cond+mu_r*deltaT;
-    mu_comb_delta_c = (mu_r+mu_f)*deltaT;
+    mu_comb_delta = (mu_r+mu_f)*deltaT+bound[0];
     s2_r_delta = s_r_cond**2+2*d_r*deltaT;
-    s2_comb_delta = 2*deltaT*(d_r+d_f);
+    s2_f_delta = s_f_cond**2+2*d_f*deltaT;
+    s2_comb_delta = s2_r_delta+s2_f_delta;
+    #s2_comb_delta = 2*deltaT*(d_r+d_f);
+    #s2_comb_delta = s_r_cond**2+s_f_cond**2+2*deltaT*(d_r+d_f);
     cov_delta = s2_r_delta;
-    mu_mvn = array([mu_r_delta,mu_comb_delta_c+bound[0]]);
+    mu_mvn = array([mu_r_delta,mu_comb_delta]);
     sigma_mvn = array([[s2_r_delta,cov_delta],[cov_delta,s2_comb_delta]]);
     ############################################################################
     for j in range(1,len(clims)):
@@ -293,6 +299,7 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
         s_f = sqrt(2*d_f*t[i]);
         # compute STD[r|(r+f)]
         s_r_cond = s_r*sqrt(1-rho**2);
+        s_f_cond = s_f*sqrt(1-(sigma_f/sigma)**2);
         # compute E[r|(r+f)]
         mu_r_cond = mu_r*t[i]+(bound[i]-t[i]*(mu_r+mu_f)-z0)*rho**2;
         # remove from consideration any particles that already hit the bound
@@ -311,14 +318,30 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
         # compute the parameters of the bivariate distribution of particle
         # locations deltaT seconds after old/new decision
         mu_r_delta = mu_r_cond+mu_r*deltaT;
-        mu_comb_delta_c = (mu_r+mu_f)*deltaT;
+        mu_comb_delta = (mu_r+mu_f)*deltaT+bound[i];
         s2_r_delta = s_r_cond**2+2*d_r*deltaT;
-        s2_comb_delta = 2*deltaT*(d_r+d_f);
+        s2_f_delta = s_f_cond**2+2*d_f*deltaT;
+        s2_comb_delta = s2_r_delta+s2_f_delta;
+        #s2_comb_delta = 2*deltaT*(d_r+d_f);
+        #s2_comb_delta = s_r_cond**2+s_f_cond**2+2*deltaT*(d_r+d_f);
         cov_delta = s2_r_delta;
-        mu_mvn = array([mu_r_delta,mu_comb_delta_c+bound[i]]);
+        mu_mvn = array([mu_r_delta,mu_comb_delta]);
         sigma_mvn = array([[s2_r_delta,cov_delta],[cov_delta,s2_comb_delta]]);
         ########################################################################
+        # Test Code:
+        #if(t[i]>0.5):
+            #slim = 3.0;
+            #xaxis = linspace(-slim,slim,200);
+            #xsup,ysup = meshgrid(xaxis,flipud(xaxis));
+            #supp = vstack([xsup.flatten(),ysup.flatten()]).T;
+            #z = stats.multivariate_normal.pdf(supp,mu_mvn,sigma_mvn);
+            #figure(); imshow(reshape(z,shape(xsup)),cmap=cm.gray,extent=[-slim,slim,-slim,slim]);
+            #vlines(r_bound,-slim,slim,colors='g');
+            #hlines(c,-3,3,colors='r');
+            #1/0
+        ########################################################################
         for j in range(1,len(clims)):
+            # remember that clims contains the bin edges in descending order
             KLL = array([-INF_PROXY,clims[j]]);
             KUL = array([r_bound,clims[j-1]]);
             RLL = array([r_bound,clims[j]]);
@@ -373,7 +396,7 @@ def predicted_proportions_sim(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT):
         # 4. Now we can use this index to determine both the decision and the response time
         decisions[i] = pos[cross_idx]>0;
         resp_times[i] = t[cross_idx]-0.5*DELTA_T; #i.e., the midpoint of the crossing interval
-        final_pos[i] = [positions[cross_idx],r_positions[cross_idx]];
+        final_pos[i] = [pos[cross_idx],r_positions[i,cross_idx]];
         
     # compute the distribution of particle positions deltaT seconds after the
     # old/new decision and choose a random position from the resulting
@@ -399,9 +422,9 @@ def predicted_proportions_sim(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT):
         conf_knows = logical_and(valid_confs,logical_and(logical_not(remembers),decisions));
         rem_RTs = resp_times[conf_rems];
         know_RTs = resp_times[conf_knows];
-        params_rem = stats.gamma.fit(remember_RTs,floc=0);
+        params_rem = stats.gamma.fit(rem_RTs,floc=0);
         params_know = stats.gamma.fit(know_RTs,floc=0);
-        p_remember_conf = stats.gamma.pdf(t,*params_rem)*DELTA_T*len(remember_RTs)/float(NR_SAMPLES);
+        p_remember_conf = stats.gamma.pdf(t,*params_rem)*DELTA_T*len(rem_RTs)/float(NR_SAMPLES);
         p_know_conf = stats.gamma.pdf(t,*params_know)*DELTA_T*len(know_RTs)/float(NR_SAMPLES);
         
         p_remember.append(p_remember_conf);
@@ -463,8 +486,6 @@ def predicted_proportions_NC(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_ff
     s_r_cond = s_r*sqrt(1-rho**2);
     s_f_cond = s_f*sqrt(1-rhoF**2);
     
-    #p_know[0] = p_old[0]*stats.norm.sf(f_bound,mu_f_cond,s_f_cond)+p_old[0]*stats.norm.cdf(r_bound,mu_r_cond,s_r_cond);
-    #p_remember[0] = p_old[0]*stats.norm.sf(r_bound,mu_r_cond,s_r_cond);
     mu_r_delta = mu_r_cond+mu_r*deltaT;
     s_r_delta = sqrt(s_r_cond**2+2*d_r*deltaT);
     p_remember[0] = p_old[0]*stats.norm.sf(r_bound,mu_r_delta,s_r_delta);
