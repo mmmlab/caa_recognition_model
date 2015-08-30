@@ -408,7 +408,7 @@ def predicted_proportions_sim(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT):
     # the parameters below are for the post old/new decision interval
     
     sigma_r_deltaT = sqrt(2*d_r*deltaT);
-    sigma_f_deltaT = sqrt(2*d_r*deltaT);
+    sigma_f_deltaT = sqrt(2*d_f*deltaT);
     r_deltaTs = stats.norm.rvs(mu_r*deltaT,sigma_r_deltaT,size=NR_SAMPLES);
     pos_deltaTs = stats.norm.rvs(mu_f*deltaT,sigma_f_deltaT,size=NR_SAMPLES)+r_deltaTs;
     final_pos[:,0]+=pos_deltaTs; final_pos[:,1]+=r_deltaTs;
