@@ -54,15 +54,16 @@ params_est = [(0.7233685,0.08959858),0.50357936,0.96055488,0.29500501,0.00464397
 
 params_est2 = [  9.96964984e-01,   7.38002355e-04,   1.83856733e-01, 3.52048480e-06,   1.54057350e-01, 4.04694786e-01,5.56870264e-04,  -1.19917001e-01,   9.55494426e-02]
 
-params_all_est = [1.0,.1,.1,.15,.15,.3,.5,-0.1,0.,.1,.1]
+#params_all_est = [1.0,.1,.1,.15,.15,.3,.5,-0.1,0.,.1,.1]
+params_all_est = [0.7233685,0.50357936,0.96055488,0.29500501,0.00464397,1.0,0.67084697,-0.74701904,0.50357936,0.50357936,0.22969753];
 
 
-param_bounds = [(0.0,1.0),(0.0,1.0),(0.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(0.0,1.0),(-1.0,1.0),(EPS,1.0)];
+param_bounds = [(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(0.0,1.0),(-1.0,1.0),(EPS,2.0)];
 # c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,delta_t = params;
 
 def find_ml_params_all(quantiles=3):
     def obj_func(model_params):
-        c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,mu_r0,mu_f0,deltaT = params_all_est;
+        c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,mu_r0,mu_f0,deltaT = model_params;#params_all_est;
         params_est_old = [c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT];
         params_est_new = [c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT];
         old_data = [rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1]];
@@ -70,7 +71,7 @@ def find_ml_params_all(quantiles=3):
         res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
         compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
         return res;
-    param_bounds = [(0.0,1.0),(0.0,1.0),(0.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(0.0,1.0),(-1.0,1.0),(0.0,1.0),(0.0,1.0),(EPS,1.0)];
+    param_bounds = [(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(-1.0,1.0),(EPS,2.0)];
     return optimize.differential_evolution(obj_func,param_bounds)
 
 def find_ml_params():
