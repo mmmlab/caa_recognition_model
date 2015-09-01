@@ -64,7 +64,7 @@ params_all_est2 = loadtxt('neha/ml_params_all.txt');
 param_bounds = [(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(0.0,1.0),(-1.0,1.0),(EPS,2.0)];
 # c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,delta_t = params;
 
-def find_ml_params_all(quantiles=3):
+def find_ml_params_all(quantiles=2):
     # computes mle of params using a global (slow) and bounded optimization algorithm
     def obj_func(model_params):
         c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,mu_r0,mu_f0,deltaT = model_params;
@@ -78,12 +78,12 @@ def find_ml_params_all(quantiles=3):
     param_bounds = [(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(-1.0,1.0),(EPS,2.0)];
     return optimize.differential_evolution(obj_func,param_bounds)
 
-def find_ml_params_all_mdf(quantiles=3):
+def find_ml_params_all_mdf(quantiles=2):
     # computes mle of params using as few parameters as possible
-    # at the moment, that means freezing mu_f, mu_f0, and mu_r0 at 0
+    # at the moment, that means freezing mu_f0 and mu_r0 at 0
     def obj_func(model_params):
-        c,mu_r,d_r,d_f,tc_bound,r_bound,z0,deltaT = model_params;
-        mu_f = mu_f0 = mu_r0 =0;
+        c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT = model_params;
+        mu_f0 = mu_r0 =0;
         params_est_old = [c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT];
         params_est_new = [c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT];
         old_data = [rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1]];
@@ -94,7 +94,7 @@ def find_ml_params_all_mdf(quantiles=3):
     param_bounds = [(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(0.0,1.0),(-1.0,1.0),(EPS,2.0)];
     return optimize.differential_evolution(obj_func,param_bounds)
 
-def find_ml_params_all_lm(quantiles=3):
+def find_ml_params_all_lm(quantiles=2):
     # computes mle of params using a local (fast) optimization algorithm
     def obj_func(model_params):
         c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,mu_r0,mu_f0,deltaT = model_params;
