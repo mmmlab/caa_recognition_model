@@ -173,6 +173,18 @@ def compute_chi_conf(remH,knowH,missH,remFA,knowFA,crFA,rem_quantiles_old,know_q
     chi_conf = chi_old+chi_new;
     return chi_conf;
 
+def compute_full_model_gof(full_model_params,old_data,new_data):
+    c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT = full_model_params;
+    mu_f0 = mu_r0 =0;
+    params_est_old = [c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT];
+    params_est_new = [c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT];
+    old_data = [rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1]];
+    new_data = [rem_fa[:,0],know_fa[:,0],CR[:,0],rem_fa[:,1],know_fa[:,1]];
+    res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
+    compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
+    return res;
+
+
 def compute_model_gof(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_conf,nr_quantiles=4):
     # computes the chi square fit of the model to the data
     # compute N, the total number of trials
