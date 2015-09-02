@@ -78,7 +78,7 @@ def find_ml_params_all(quantiles=2):
     param_bounds = [(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(-1.0,1.0),(EPS,2.0)];
     return optimize.differential_evolution(obj_func,param_bounds)
 
-def find_ml_params_all_mdf(quantiles=2):
+def find_ml_params_all_mdf(quantiles=4):
     # computes mle of params using as few parameters as possible
     # at the moment, that means freezing mu_f0 and mu_r0 at 0
     def obj_func(model_params):
@@ -91,7 +91,7 @@ def find_ml_params_all_mdf(quantiles=2):
         res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
         compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
         return res;
-    param_bounds = [(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(0.0,1.0),(-1.0,1.0),(EPS,2.0)];
+    param_bounds = [(EPS,1.0),(-1.0,1.0),(-1.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(EPS,1.0),(-1.0,1.0),(0.25,2.0)];
     return optimize.differential_evolution(obj_func,param_bounds)
 
 def find_ml_params_all_lm(quantiles=2):
@@ -106,6 +106,23 @@ def find_ml_params_all_lm(quantiles=2):
         compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
         return res;
     return optimize.fmin(obj_func,params_all_est2)
+
+def find_ml_params_all_mdf_lm(quantiles=2):
+    # computes mle of params using as few parameters as possible
+    # at the moment, that means freezing mu_f0 and mu_r0 at 0
+    def obj_func(model_params):
+        c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT = model_params;
+        mu_f0 = mu_r0 =0;
+        params_est_old = [c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT];
+        params_est_new = [c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT];
+        old_data = [rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1]];
+        new_data = [rem_fa[:,0],know_fa[:,0],CR[:,0],rem_fa[:,1],know_fa[:,1]];
+        res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
+        compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
+        return res;
+    params_init = loadtxt('neha/ml_params_mdf_8p3q.txt').tolist();
+    params_init.insert(2,EPS); params_init[-1] = 0.5;
+    return optimize.fmin(obj_func,params_init)
 
 def find_ml_params():
     obj_func = lambda model_params:compute_model_gof(model_params,rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1],nr_quantiles=3);
