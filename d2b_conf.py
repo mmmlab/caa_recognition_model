@@ -91,7 +91,7 @@ def find_ml_params_all_mdf(quantiles=4):
         res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
         compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
         return res;
-    param_bounds = [(EPS,1.0),(-1.0,1.0),(-1.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(EPS,1.0),(-1.0,1.0),(0.25,2.0)];
+    param_bounds = [(EPS,1.0),(-1.0,1.0),(-1.0,1.0),(0.01,2.0),(0.01,2.0),(0.05,1.0),(EPS,1.0),(-1.0,1.0),(0.25,2.0)];
     return optimize.differential_evolution(obj_func,param_bounds)
 
 def find_ml_params_all_lm(quantiles=2):
