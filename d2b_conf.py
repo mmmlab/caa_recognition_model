@@ -635,3 +635,56 @@ def predicted_proportions_NC(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_ff
 
     
     return p_remember,p_know,p_new,t;
+
+def emp_v_prediction(model_params):
+    c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT = model_params;
+    mu_f0 = mu_r0 =0;
+    params_est_old = [c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT];
+    params_est_new = [c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT];
+    nr_conf = 1;#len(c);
+    # adjust the number of confidence levels in the data to match number in model
+    rhconf = clip(rem_hit[:,1],0,nr_conf); khconf = clip(know_hit[:,1],0,nr_conf);
+    rfconf = clip(rem_fa[:,1],0,nr_conf); kfconf = clip(know_fa[:,1],0,nr_conf);
+    rh_rts = [rem_hit[rhconf==i,0] for i in unique(rhconf)];
+    kh_rts = [know_hit[khconf==i,0] for i in unique(khconf)];
+    rf_rts = [rem_fa[rfconf==i,0] for i in unique(rfconf)];
+    kf_rts = [know_fa[kfconf==i,0] for i in unique(kfconf)];
+
+    old_data = [rh_rts,kh_rts,miss[:,0]];
+    new_data = [rf_rts,kf_rts,CR[:,0]];
+    
+    n_old = len(rem_hit)+len(know_hit)+len(miss);
+    n_new = len(rem_fa)+len(know_fa)+len(CR);
+    
+    # compute predicted proportions
+    pp_old = predicted_proportions(*params_est_old);
+    pp_new = predicted_proportions(*params_est_new);
+    
+    return old_data,new_data,pp_old,pp_new,n_old,n_new
+    
+# plotting the data
+def plot_comparison(p_dist,e_dist,e_total):
+    
+    # plot the histogram for observed data
+    #hist(rem_hit[:,0],bins=40,range = [0,10],histtype='step',color='0.5',lw=2,normed=True);
+    
+    # compute empirical p(remember|old)
+    p_rem_total = len(e_dist)*1.0/e_total;
+    # compute density histogram
+    hd,edges = histogram(rem_hit[:,0],bins=40,range=[0,10],density=True);
+    hist_density = hstack([[0],hd]);
+    step(edges,hist_density*p_rem_total,color='0.5',lw=2);
+    # plot the PDF for observed data
+    rem_old = stats.kde.gaussian_kde(rem_hit[:,0]);
+    plot(t,rem_old(t)*p_rem_total,'r',lw=2)
+    # generate the raster plot of raw RTs
+    rmin = 0;
+    rmax = max(rem_old(t))*0.1;
+    vlines(rem_hit[:,0],rmin,rmax,color='k',alpha=0.15);
+    # plot the PDF for predicted data
+    # note: the division by DELTA_T below is to make sure that you are plotting
+    # probability densities (rather than probability masses)
+    plot(t,p_remember.sum(0)/DELTA_T,'g',lw=2)
+    title('Remember Hits');
+    axis([0,t.max(),None,None])
+    show();
