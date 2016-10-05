@@ -1,7 +1,6 @@
 ######################################
 ### Files that git-add should ignore
 
-*.dat
 *.pyc
 *.py~
 *.jpg

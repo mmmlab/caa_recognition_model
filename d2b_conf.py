@@ -1,3 +1,4 @@
+import shelve
 from pylab import *
 import pylab as pl
 import numpy
@@ -18,7 +19,16 @@ know_hit = numpy.loadtxt(data_path+'knowRT_hit.txt'); # load know RTs for hits
 rem_fa = numpy.loadtxt(data_path+'remRT_fa.txt'); # load remember RTs for false alarms
 know_fa = numpy.loadtxt(data_path+'knowRT_fa.txt');  # load know RTs for false alarms
 CR = numpy.loadtxt(data_path+'CR.txt');  # load CR RTs 
-miss = numpy.loadtxt(data_path+'miss.txt');  # load miss RTs
+
+# Read in new Vincentized RT data
+db = shelve.open(data_path+'neha_data.dat','r');
+rem_hit = db['rem_hit'];
+know_hit = db['know_hit'];
+rem_fa = db['rem_fa'];
+know_fa = db['know_fa'];
+CR = db['CR'];
+miss = db['miss'];
+db.close();
 
 
 
