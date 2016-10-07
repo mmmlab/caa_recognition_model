@@ -14,11 +14,11 @@ data_path = 'neha/data/'; # this is the base path for the data files
 # the reason to do this first is that, in order to be efficient,
 # we don't want to represent any more of the time axis than we have to.
 
-rem_hit = numpy.loadtxt(data_path+'remRT_hit.txt'); # load remember RTs for hits
-know_hit = numpy.loadtxt(data_path+'knowRT_hit.txt'); # load know RTs for hits
-rem_fa = numpy.loadtxt(data_path+'remRT_fa.txt'); # load remember RTs for false alarms
-know_fa = numpy.loadtxt(data_path+'knowRT_fa.txt');  # load know RTs for false alarms
-CR = numpy.loadtxt(data_path+'CR.txt');  # load CR RTs 
+#rem_hit = numpy.loadtxt(data_path+'remRT_hit.txt'); # load remember RTs for hits
+#know_hit = numpy.loadtxt(data_path+'knowRT_hit.txt'); # load know RTs for hits
+#rem_fa = numpy.loadtxt(data_path+'remRT_fa.txt'); # load remember RTs for false alarms
+#know_fa = numpy.loadtxt(data_path+'knowRT_fa.txt');  # load know RTs for false alarms
+#CR = numpy.loadtxt(data_path+'CR.txt');  # load CR RTs 
 
 # Read in new Vincentized RT data
 db = shelve.open(data_path+'neha_data.dat','r');
@@ -263,31 +263,106 @@ def compute_model_quantiles(params,nr_quantiles=4):
     # return quantile locations and marginal p(new)
     return rem_quantiles,know_quantiles,new_quantiles,sum(p_remember,1),sum(p_know,1),sum(p_new);
 
-# def compute_model_quantiles(params,nr_quantiles=4):
-#     quantile_increment = 1.0/nr_quantiles;
-#     quantiles = arange(0,1,quantile_increment);
-#     # unpack model parameters
-#     # c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,delta_t = params;
-#     # compute marginal distributions
-#     p_remember,p_know,p_new,t = predicted_proportions(*params);
-#     # compute marginal category proportions
-#     remember_total = p_remember.sum()+EPS;
-#     know_total = p_know.sum()+EPS;
-#     new_total = p_new.sum()+EPS;
-#     # compute integrals of marginal distributions
-#     P_r = cumsum(p_remember)/remember_total;
-#     P_k = cumsum(p_know)/know_total;
-#     P_n = cumsum(p_new)/new_total;
-#     
-#     # compute RT quantiles
-#     rem_quantiles = array([t[argmax(P_r>q)] for q in quantiles]);
-#     know_quantiles = array([t[argmax(P_k>q)] for q in quantiles]);
-#     new_quantiles = array([t[argmax(P_n>q)] for q in quantiles]);
-#     rem_quantiles[0] = 0;
-#     know_quantiles[0] = 0;
-#     new_quantiles[0] = 0;
-#     # return quantile locations and marginal p(new)
-#     return rem_quantiles,know_quantiles,new_quantiles,sum(p_remember),sum(p_know),sum(p_new);
+
+# (10/06/2016) This is the new version of the function, which implements the
+# collapsing bound model, but as (effectively) a single-process model
+# One major advantage is that we can eliminate at least 3 parameters:
+# mu_r, d_r, and r_bound
+
+def predicted_proportions_spm(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
+    # make c (the confidence levels) an array in case it is a scalar value
+    c = array(c,ndmin=1);
+    n = len(c);
+    # form an array consisting of the appropriate (upper) integration limits
+    clims = hstack(([INF_PROXY],c,[-INF_PROXY]));
+    # compute process SD
+    sigma_f = sqrt(2*d_f*DELTA_T);
+    sigma = sigma_f;
+    
+    # compute the correlation for r given r+f
+    rho = sigma_r/sigma;
+
+    t = linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
+    bound = exp(-tc_bound*t); # this is the collapsing bound
+     
+    mu = mu_f*DELTA_T; # this is the expected drift over time interval DELTA_T
+    # compute the bounding limit of the space domain. This should include at
+    # least 99% of the probability mass when the particle is at the largest possible bound
+    space_lim = max(bound)+3*sigma;
+    delta_s = 2*space_lim/NR_SSTEPS;
+    # finally, construct the space axis
+    x = linspace(-space_lim,space_lim,NR_SSTEPS);
+    # compute the diffusion kernel
+    kernel = stats.norm.pdf(x,mu,sigma)*delta_s;
+    # ... and its Fourier transform. We'll use this to compute FD convolutions
+    if(use_fftw):
+        ft_kernel = fftw.fft(kernel);
+    else:
+        ft_kernel = fft(kernel);
+    tx = zeros((len(t),len(x)));
+    
+    # Construct arrays to hold RT distributions
+    p_old = zeros(shape(t));
+    p_new = zeros(shape(t));
+    p_old_conf = zeros((n+1,size(t)));  
+    
+    ############################################
+    ## take care of the first timestep #########
+    ############################################
+    tx[0] = stats.norm.pdf(x,mu+z0,sigma)*delta_s;
+    p_old[0] = sum(tx[0][x>=bound[0]]);
+    p_new[0] = sum(tx[0][x<=-bound[0]]);
+    
+    # remove from consideration any particles that already hit the bound
+    tx[0]*=(abs(x)<bound[0]);
+    
+    ############################################################################
+    # compute the parameters for the distribution of particle locations
+    # deltaT seconds after old/new decision
+    mu_delta = mu_f*deltaT+bound[0];
+    s_delta = sqrt(2*d_f*deltaT);
+    
+    # compute the probability that the particle falls within the region for
+    # each category. Note that now the particle's trajectory is 1D, so that
+    # the only thing that determines the region is the bounding interval,
+    # specified in terms of f
+    for j in range(1,len(clims)):
+        p_old_conf[j-1,0] = p_old[0]*diff(stats.norm.cdf([clims[j-1],clims[j]],mu_delta,s_delta));
+        
+    #######################################
+    ## take care of subsequent timesteps ##
+    #######################################
+    
+    for i in range(1,len(t)):
+        # convolve the particle distribution from the previous timestep
+        # with the diffusion kernel (using Fourier domain convolution)
+        if(use_fftw):
+            tx[i] = abs(ifftshift(fftw.ifft(fftw.fft(tx[i-1])*ft_kernel)));
+        else:
+            tx[i] = abs(ifftshift(ifft(fft(tx[i-1])*ft_kernel)));
+
+        p_pos = tx[i][x>=bound[i]]; # probability of each particle position above the upper bound
+        x_pos = x[x>=bound[i]];     # location of each particle position above the upper bound
+        
+        # compute the expected value of a particle that just exceeded the bound
+        # during the last time interval
+        comb_est = (dot(p_pos,x_pos)+EPS)/(sum(p_pos)+EPS); 
+
+        p_old[i] = sum(p_pos); # total probability that particle crosses upper bound
+        p_new[i] = sum(tx[i][x<=-bound[i]]); # probability that particle crosses lower bound
+        
+               # remove from consideration any particles that already hit the bound
+        tx[i]*=(abs(x)<bound[i]);
+        
+        # compute the parameters for the distribution of particle locations
+        # deltaT seconds after old/new decision
+        mu_delta = mu_f*deltaT+bound[i];
+        s_delta = sqrt(2*d_f*deltaT);
+        
+        for j in range(1,len(clims)):
+            p_old_conf[j-1,i] = p_old[i]*diff(stats.norm.cdf([clims[j-1],clims[j]],mu_delta,s_delta));
+    return p_old_conf,p_new,t;
+
 
 def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fftw=True):
     # make c (the confidence levels) an array in case it is a scalar value
