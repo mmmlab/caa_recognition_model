@@ -49,10 +49,12 @@ fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
 #c,mu_f,d_f,tc_bound,z0,deltaT = model_params;
 params_all_est = [0.72,1.5,0.3,1.0,-0.75,0.23];
 
+params_all_est = [0.90,0.28,0.19,0.25,-0.4,0.05];#new values
+
 param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
 # c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,delta_t = params;
 
-def find_ml_params_all(quantiles=2):
+def find_ml_params_all(quantiles=5):
     # computes mle of params using a global (slow) and bounded optimization algorithm
     def obj_func(model_params):
         c,mu_f,d_f,tc_bound,z0,deltaT = model_params;
@@ -66,7 +68,7 @@ def find_ml_params_all(quantiles=2):
     param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
     return optimize.differential_evolution(obj_func,param_bounds)
 
-def find_ml_params_all_lm(quantiles=2):
+def find_ml_params_all_lm(quantiles=5):
     # computes mle of params using a local (fast) optimization algorithm
     def obj_func(model_params):
         c,mu_f,d_f,tc_bound,z0,deltaT = model_params;
