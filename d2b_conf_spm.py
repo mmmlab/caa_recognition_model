@@ -14,12 +14,6 @@ data_path = 'neha/data/'; # this is the base path for the data files
 # the reason to do this first is that, in order to be efficient,
 # we don't want to represent any more of the time axis than we have to.
 
-#rem_hit = numpy.loadtxt(data_path+'remRT_hit.txt'); # load remember RTs for hits
-#know_hit = numpy.loadtxt(data_path+'knowRT_hit.txt'); # load know RTs for hits
-#rem_fa = numpy.loadtxt(data_path+'remRT_fa.txt'); # load remember RTs for false alarms
-#know_fa = numpy.loadtxt(data_path+'knowRT_fa.txt');  # load know RTs for false alarms
-#CR = numpy.loadtxt(data_path+'CR.txt');  # load CR RTs 
-
 # Read in new Vincentized RT data
 db = shelve.open(data_path+'neha_data.dat','r');
 rem_hit = db['rem_hit'];
@@ -30,15 +24,7 @@ CR = db['CR'];
 miss = db['miss'];
 db.close();
 
-
-
-## read in collapsed data 
-#remember_hit = numpy.loadtxt('data_collapsed/remRT_hit.txt'); # load remember RTs for hits
-#know_hit = numpy.loadtxt('data_collapsed/knowRT_hit.txt'); # load know RTs for hits
-#remember_fa = numpy.loadtxt('data_collapsed/remRT_fa.txt'); # load remember RTs for false alarms#
-#know_fa = numpy.loadtxt('data_collapsed/knowRT_fa.txt');  # load know RTs for false alarms
-#CR = numpy.loadtxt('data_collapsed/CR.txt');  # load CR RTs 
-#miss = numpy.loadtxt('data_collapsed/miss.txt');  # load miss RTs 
+ 
 INF_PROXY   = 10; # a value used to provide very large but finite bounds for mvn integration
 EPS         = 1e-10 # a very small value (used for numerical stability)
 NR_THREADS  = 1;    # this is for multithreaded fft
@@ -53,86 +39,45 @@ QUANT_DIFF = 0.25;
 NR_QUANTILES = 4;
 R = 0.1; D = 0.05; L = 0.1; Z = 0.0;
 
-#param_bounds = [(0.0,1.0),(0.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(-1.0,1.0)];
-#param_bounds = [(0.51,0.95),(0.1,0.5),(0.0,1.0),(0.0,1.0),(0.05,1.0),(0.05,1,0),(0.1,1.0),(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(-1.0,1.0)];
-#param_bounds = [(0.2,1.0),(0.0,0.19),(0.0,1.0),(0.0,1.0),(EPS,1.0),(EPS,1.0),(0.0,1.0),(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(-1.0,1.0),(0.0,10.0)];
-#param_bounds = [(0.2,1.0),(0.01,0.19),(0.0,1.0),(0.0,1.0),(EPS,1.0),(EPS,1.0),(0.0,10.0)];
+
 
 
 fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
 
-params_est = [(0.7233685,0.08959858),0.50357936,0.96055488,0.29500501,0.00464397,1.0,0.67084697,-0.74701904,0.22969753];
-
-params_est2 = [  9.96964984e-01,   7.38002355e-04,   1.83856733e-01, 3.52048480e-06,   1.54057350e-01, 4.04694786e-01,5.56870264e-04,  -1.19917001e-01,   9.55494426e-02]
-
 #params_all_est = [1.0,.1,.1,.15,.15,.3,.5,-0.1,0.,.1,.1]
-params_all_est = [0.7233685,0.50357936,0.96055488,0.29500501,0.00464397,1.0,0.67084697,-0.74701904,0.50357936,0.50357936,0.22969753];
 
-params_all_est2 = loadtxt('neha/ml_params_all.txt');
-#[1.,0.001,  0.137, EPS, 0.153, 0.353, 0.001, -0.07 ,EPS , -0.162, 0.131];
+#c,mu_f,d_f,tc_bound,z0,deltaT = model_params;
+params_all_est = [0.72,1.5,0.3,1.0,-0.75,0.23];
 
-param_bounds = [(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(0.0,1.0),(-1.0,1.0),(EPS,2.0)];
+param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
 # c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,delta_t = params;
 
 def find_ml_params_all(quantiles=2):
     # computes mle of params using a global (slow) and bounded optimization algorithm
     def obj_func(model_params):
-        c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,mu_r0,mu_f0,deltaT = model_params;
-        params_est_old = [c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT];
-        params_est_new = [c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT];
-        old_data = [rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1]];
-        new_data = [rem_fa[:,0],know_fa[:,0],CR[:,0],rem_fa[:,1],know_fa[:,1]];
+        c,mu_f,d_f,tc_bound,z0,deltaT = model_params;
+        params_est_old = [c,mu_f,d_f,tc_bound,z0,deltaT];
+        params_est_new = [c,0,d_f,tc_bound,z0,deltaT];
+        old_data = [hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],hstack([rem_hit[:,1],know_hit[:,1]])];
+        new_data = [hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],hstack([rem_fa[:,1],know_fa[:,1]])];
         res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
         compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
         return res;
-    param_bounds = [(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(-1.0,1.0),(EPS,2.0)];
-    return optimize.differential_evolution(obj_func,param_bounds)
-
-def find_ml_params_all_mdf(quantiles=4):
-    # computes mle of params using as few parameters as possible
-    # at the moment, that means freezing mu_f0 and mu_r0 at 0
-    def obj_func(model_params):
-        c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT = model_params;
-        mu_f0 = mu_r0 =0;
-        params_est_old = [c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT];
-        params_est_new = [c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT];
-        old_data = [rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1]];
-        new_data = [rem_fa[:,0],know_fa[:,0],CR[:,0],rem_fa[:,1],know_fa[:,1]];
-        res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
-        compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
-        return res;
-    param_bounds = [(EPS,1.0),(-1.0,1.0),(-1.0,1.0),(0.01,2.0),(0.01,2.0),(0.05,1.0),(EPS,1.0),(-1.0,1.0),(0.25,2.0)];
+    param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
     return optimize.differential_evolution(obj_func,param_bounds)
 
 def find_ml_params_all_lm(quantiles=2):
     # computes mle of params using a local (fast) optimization algorithm
     def obj_func(model_params):
-        c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,mu_r0,mu_f0,deltaT = model_params;
-        params_est_old = [c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT];
-        params_est_new = [c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT];
-        old_data = [rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1]];
-        new_data = [rem_fa[:,0],know_fa[:,0],CR[:,0],rem_fa[:,1],know_fa[:,1]];
+        c,mu_f,d_f,tc_bound,z0,deltaT = model_params;
+        params_est_old = [c,mu_f,d_f,tc_bound,z0,deltaT];
+        params_est_new = [c,0,d_f,tc_bound,z0,deltaT];
+        old_data = [hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],hstack([rem_hit[:,1],know_hit[:,1]])];
+        new_data = [hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],hstack([rem_fa[:,1],know_fa[:,1]])];
         res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
         compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
         return res;
-    return optimize.fmin(obj_func,params_all_est2)
-
-def find_ml_params_all_mdf_lm(quantiles=2):
-    # computes mle of params using as few parameters as possible
-    # at the moment, that means freezing mu_f0 and mu_r0 at 0
-    def obj_func(model_params):
-        c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT = model_params;
-        mu_f0 = mu_r0 =0;
-        params_est_old = [c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT];
-        params_est_new = [c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT];
-        old_data = [rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1]];
-        new_data = [rem_fa[:,0],know_fa[:,0],CR[:,0],rem_fa[:,1],know_fa[:,1]];
-        res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
-        compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
-        return res;
-    params_init = loadtxt('neha/ml_params_mdf_8p3q.txt').tolist();
-    params_init.insert(2,EPS); params_init[-1] = 0.5;
-    return optimize.fmin(obj_func,params_init)
+    return optimize.fmin(obj_func,params_all_est)
 
 def find_ml_params():
     obj_func = lambda model_params:compute_model_gof(model_params,rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1],nr_quantiles=3);
@@ -212,28 +157,25 @@ def compute_full_model_gof(full_model_params,old_data,new_data):
     return res;
 
 
-def compute_model_gof(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_conf,nr_quantiles=4):
+def compute_model_gof(model_params,old_RTs,new_RTs,old_conf,nr_quantiles=4):
     # computes the chi square fit of the model to the data
     # compute N, the total number of trials
-    N = len(rem_RTs)+len(know_RTs)+len(new_RTs);
+    N = len(old_RTs)+len(new_RTs);
     # compute x, the observed frequency for each category
-    rem_quantiles,know_quantiles,new_quantiles,p_r,p_k,p_n = compute_model_quantiles(model_params,nr_quantiles);
+    old_quantiles,new_quantiles,p_o,p_n = compute_model_quantiles(model_params,nr_quantiles);
     # determine the number of confidence levels being used in the model
-    nr_conf_levels = len(rem_quantiles);
+    nr_conf_levels = len(old_quantiles);
     # adjust the number of confidence levels in the data to match
-    rem_conf = clip(rem_conf,0,nr_conf_levels-1);
-    know_conf = clip(know_conf,0,nr_conf_levels-1);
+    old_conf = clip(old_conf,0,nr_conf_levels-1);
     ## compute the number of RTs falling into each quantile bin
-    rem_freqs = array([-diff([sum(rem_RTs[rem_conf==i]>q) for q in rem_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
-    know_freqs = array([-diff([sum(know_RTs[know_conf==i]>q) for q in know_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
+    old_freqs = array([-diff([sum(old_RTs[old_conf==i]>q) for q in old_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
     new_freqs = -diff([sum(new_RTs>q) for q in new_quantiles]+[0]);
-    x = hstack([rem_freqs.flatten(),know_freqs.flatten(),new_freqs]);
+    x = hstack([old_freqs.flatten(),new_freqs]);
     
     # compute p, the probability associated with each category in the model
-    p_rem = p_r[:,newaxis]*ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
-    p_know = p_k[:,newaxis]*ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
+    p_o = p_o[:,newaxis]*ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
     p_new = p_n*ones(nr_quantiles)/float(nr_quantiles);
-    p = hstack([p_rem.flatten(),p_know.flatten(),p_new]);
+    p = hstack([p_o.flatten(),p_new]);
     return chi_square_gof(x,N,p)
 
 def compute_model_quantiles(params,nr_quantiles=4):
@@ -243,25 +185,21 @@ def compute_model_quantiles(params,nr_quantiles=4):
     # unpack model parameters
     # c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,delta_t = params;
     # compute marginal distributions
-    p_remember,p_know,p_new,t = predicted_proportions(*params);
+    p_old,p_new,t = predicted_proportions(*params);
     # compute marginal category proportions (per confidence level)
-    remember_total = p_remember.sum(-1)+EPS;
-    know_total = p_know.sum(-1)+EPS;
+    old_total = p_old.sum(-1)+EPS;
     new_total = p_new.sum()+EPS;
     # compute integrals of marginal distributions
-    P_r = cumsum(p_remember,-1)/remember_total[:,newaxis];
-    P_k = cumsum(p_know,-1)/know_total[:,newaxis];
+    P_o = cumsum(p_old,-1)/old_total[:,newaxis];
     P_n = cumsum(p_new)/new_total;
     
     # compute RT quantiles (by confidence level for know and rem judgments)
-    rem_quantiles = array([t[argmax(P_r>q,-1)] for q in quantiles]).T;
-    know_quantiles = array([t[argmax(P_k>q,-1)] for q in quantiles]).T;
+    old_quantiles = array([t[argmax(P_o>q,-1)] for q in quantiles]).T;
     new_quantiles = array([t[argmax(P_n>q)] for q in quantiles]);
-    rem_quantiles[:,0] = 0;
-    know_quantiles[:,0] = 0;
+    old_quantiles[:,0] = 0;
     new_quantiles[0] = 0;
     # return quantile locations and marginal p(new)
-    return rem_quantiles,know_quantiles,new_quantiles,sum(p_remember,1),sum(p_know,1),sum(p_new);
+    return old_quantiles,new_quantiles,sum(p_old,1),sum(p_new);
 
 
 # (10/06/2016) This is the new version of the function, which implements the
@@ -269,7 +207,7 @@ def compute_model_quantiles(params,nr_quantiles=4):
 # One major advantage is that we can eliminate at least 3 parameters:
 # mu_r, d_r, and r_bound
 
-def predicted_proportions_spm(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
+def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
     # make c (the confidence levels) an array in case it is a scalar value
     c = array(c,ndmin=1);
     n = len(c);
@@ -361,7 +299,7 @@ def predicted_proportions_spm(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
     return p_old_conf,p_new,t;
 
 
-def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fftw=True):
+def predicted_proportions_dpm(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fftw=True):
     # make c (the confidence levels) an array in case it is a scalar value
     c = array(c,ndmin=1);
     n = len(c);
