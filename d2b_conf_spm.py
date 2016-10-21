@@ -7,6 +7,7 @@ from scipy import optimize
 import pyfftw
 import fftw_test as fftw
 from multinomial_funcs import multinom_loglike,chi_square_gof
+from scipy.stats import gaussian_kde
 
 data_path = 'neha/data/'; # this is the base path for the data files
 
@@ -388,26 +389,29 @@ def predicted_proportions_sim(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT):
     p_new = stats.gamma.pdf(t,*params_new)*DELTA_T*len(new_RTs)/float(NR_SAMPLES);
     return p_remember,p_know,p_new,t;
 
-
+# updated to compute comparison between empirical data and model predictions for
+# single-pro
 def emp_v_prediction(model_params):
     c,mu_f,d_f,tc_bound,z0,deltaT = model_params;
     params_est_old = [c,mu_f,d_f,tc_bound,z0,deltaT];
     params_est_new = [c,0,d_f,tc_bound,z0,deltaT];
+    
+    hits = vstack([rem_hit,know_hit]);
+    FAs = vstack([rem_fa,know_fa]);
 
     nr_conf = 1;
     # adjust the number of confidence levels in the data to match number in model
-    rhconf = clip(rem_hit[:,1],0,nr_conf); khconf = clip(know_hit[:,1],0,nr_conf);
-    rfconf = clip(rem_fa[:,1],0,nr_conf); kfconf = clip(know_fa[:,1],0,nr_conf);
-    rh_rts = [rem_hit[rhconf==i,0] for i in unique(rhconf)];
-    kh_rts = [know_hit[khconf==i,0] for i in unique(khconf)];
-    rf_rts = [rem_fa[rfconf==i,0] for i in unique(rfconf)];
-    kf_rts = [know_fa[kfconf==i,0] for i in unique(kfconf)];
-
-    old_data = [rh_rts,kh_rts,miss[:,0]];
-    new_data = [rf_rts,kf_rts,CR[:,0]];
+    hconf = clip(hits[:,1],0,nr_conf);
+    fconf = clip(FAs[:,1],0,nr_conf);
     
-    n_old = len(rem_hit)+len(know_hit)+len(miss);
-    n_new = len(rem_fa)+len(know_fa)+len(CR);
+    h_rts = [hits[hconf==i,0] for i in unique(hconf)];
+    f_rts = [FAs[fconf==i,0] for i in unique(fconf)];
+
+    old_data = [h_rts,miss[:,0]];
+    new_data = [f_rts,CR[:,0]];
+    
+    n_old = len(hits)+len(miss);
+    n_new = len(FAs)+len(CR);
     
     # compute predicted proportions
     pp_old = predicted_proportions(*params_est_old);
@@ -416,28 +420,54 @@ def emp_v_prediction(model_params):
     return old_data,new_data,pp_old,pp_new,n_old,n_new
     
 # plotting the data
-def plot_comparison(p_dist,e_dist,e_total):
+def plot_evp_pair(p_dist,e_dist,e_total,col='g'):
     
     # plot the histogram for observed data
-    #hist(rem_hit[:,0],bins=40,range = [0,10],histtype='step',color='0.5',lw=2,normed=True);
+    t = linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
     
-    # compute empirical p(remember|old)
-    p_rem_total = len(e_dist)*1.0/e_total;
-    # compute density histogram
-    hd,edges = histogram(rem_hit[:,0],bins=40,range=[0,10],density=True);
-    hist_density = hstack([[0],hd]);
-    step(edges,hist_density*p_rem_total,color='0.5',lw=2);
-    # plot the PDF for observed data
-    rem_old = stats.kde.gaussian_kde(rem_hit[:,0]);
-    plot(t,rem_old(t)*p_rem_total,'r',lw=2)
-    # generate the raster plot of raw RTs
-    rmin = 0;
-    rmax = max(rem_old(t))*0.1;
-    vlines(rem_hit[:,0],rmin,rmax,color='k',alpha=0.15);
+    # compute the prior distribution for the response category
+    p_cat = len(e_dist)*1.0/e_total;
+    
+    ## compute density histogram
+    #hd,edges = histogram(e_dist,bins=40,range=[0,10],density=True);
+    #hist_density = hstack([[0],hd]);
+    #step(edges,hist_density*p_cat,color='0.5',lw=2);
+    # plot the KDE for observed data
+    kde = stats.kde.gaussian_kde(e_dist);
+    plot(t,kde(t)*p_cat,col+'--',lw=2)
+    ## generate the raster plot of raw RTs
+    #rmin = 0;
+    #rmax = max(kde(t))*0.1;
+    #vlines(e_dist,rmin,rmax,color='k',alpha=0.15);
     # plot the PDF for predicted data
     # note: the division by DELTA_T below is to make sure that you are plotting
     # probability densities (rather than probability masses)
-    plot(t,p_remember.sum(0)/DELTA_T,'g',lw=2)
-    title('Remember Hits');
+    plot(t,p_dist/DELTA_T,col,lw=2)
     axis([0,t.max(),None,None])
     show();
+    
+def plot_comparison(model_params,nr_conf=1):
+    old_data,new_data,pp_old,pp_new,n_old,n_new = emp_v_prediction(model_params);
+    colors = ['k','r','b','g','c']
+    # plot comparison for 'old' words
+    figure(); title('RT Distributions for Old Words');
+    c_idx = 0;
+    # 1. plot misses
+    plot_evp_pair(pp_old[1],old_data[1],n_old,colors[c_idx]);
+    c_idx+=1;
+    # 2. plot hits
+    for conf in range(nr_conf):
+        plot_evp_pair(pp_old[0][conf],old_data[0][conf],n_old,colors[c_idx]);
+        c_idx+=1;
+    axis([0,10,0,0.6]);
+    # plot comparison for 'new' words
+    figure(); title('RT Distributions for New Words');
+    c_idx = 0;
+    # 1. plot misses
+    plot_evp_pair(pp_new[1],new_data[1],n_new,colors[c_idx]);
+    c_idx+=1;
+    # 2. plot hits
+    for conf in range(nr_conf):
+        plot_evp_pair(pp_new[0][conf],new_data[0][conf],n_new,colors[c_idx]);
+        c_idx+=1;
+    axis([0,10,0,0.6]);
