@@ -45,12 +45,13 @@ R = 0.1; D = 0.05; L = 0.1; Z = 0.0;
 
 fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
 
-params_all_est = [0.99,0.11,0.06,0.66,-0.11,1.27]; # new values from global search
-
+params_est = [0.99,0.11,0.06,0.66,-0.11,1.27]; # new values from global search
 param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
-# c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,delta_t = params;
+# version with free parameters for "new" words
+params_est_all = [0.99,0.11,0.06,0.11,0.06,0.66,-0.11,1.27]; # new values from global search
+param_bounds_all = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
 
-def find_ml_params_all(quantiles=5):
+def find_ml_params_all(quantiles=4):
     # computes mle of params using a global (slow) and bounded optimization algorithm
     def obj_func(model_params):
         c,mu_old,d_old,tc_bound,z0,deltaT = model_params;
@@ -61,21 +62,21 @@ def find_ml_params_all(quantiles=5):
         res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
         compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
         return res;
-    param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
+    #param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
     return optimize.differential_evolution(obj_func,param_bounds)
 
-def find_ml_params_all_lm(quantiles=5):
+def find_ml_params_all_lm(quantiles=4):
     # computes mle of params using a local (fast) optimization algorithm
     def obj_func(model_params):
-        c,mu_f,d_f,tc_bound,z0,deltaT = model_params;
-        params_est_old = [c,mu_f,d_f,tc_bound,z0,deltaT];
-        params_est_new = [c,0,d_f,tc_bound,z0,deltaT];
+        c,mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT = model_params;
+        params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT];
+        params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT];
         old_data = [hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],hstack([rem_hit[:,1],know_hit[:,1]])];
         new_data = [hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],hstack([rem_fa[:,1],know_fa[:,1]])];
         res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
         compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
         return res;
-    return optimize.fmin(obj_func,params_all_est)
+    return optimize.fmin(obj_func,params_est_all)
 
 def find_ml_params():
     obj_func = lambda model_params:compute_model_gof(model_params,rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1],nr_quantiles=3);
