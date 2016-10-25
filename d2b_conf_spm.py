@@ -45,13 +45,6 @@ R = 0.1; D = 0.05; L = 0.1; Z = 0.0;
 
 fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
 
-#params_all_est = [1.0,.1,.1,.15,.15,.3,.5,-0.1,0.,.1,.1]
-
-#c,mu_f,d_f,tc_bound,z0,deltaT = model_params;
-#params_all_est = [0.72,1.5,0.3,1.0,-0.75,0.23];
-
-#params_all_est = [0.90,0.28,0.19,0.25,-0.4,0.05];#new values
-
 params_all_est = [0.99,0.11,0.06,0.66,-0.11,1.27]; # new values from global search
 
 param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
@@ -60,9 +53,9 @@ param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
 def find_ml_params_all(quantiles=5):
     # computes mle of params using a global (slow) and bounded optimization algorithm
     def obj_func(model_params):
-        c,mu_f,d_f,tc_bound,z0,deltaT = model_params;
-        params_est_old = [c,mu_f,d_f,tc_bound,z0,deltaT];
-        params_est_new = [c,0,d_f,tc_bound,z0,deltaT];
+        c,mu_old,d_old,tc_bound,z0,deltaT = model_params;
+        params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT];
+        params_est_new = [c,0,d_old,tc_bound,z0,deltaT];
         old_data = [hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],hstack([rem_hit[:,1],know_hit[:,1]])];
         new_data = [hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],hstack([rem_fa[:,1],know_fa[:,1]])];
         res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
@@ -87,80 +80,6 @@ def find_ml_params_all_lm(quantiles=5):
 def find_ml_params():
     obj_func = lambda model_params:compute_model_gof(model_params,rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1],nr_quantiles=3);
     return optimize.differential_evolution(obj_func,param_bounds);
-
-def find_ml_params2():
-    obj_func = lambda model_params:compute_model_gof(model_params,rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1],nr_quantiles=3);
-    return optimize.fmin(obj_func,params_est2);
-
-def find_ml_params_new():
-    obj_func = lambda model_params:compute_model_gof(model_params,rem_fa[:,0],know_fa[:,0],CR[:,0],rem_fa[:,1],know_fa[:,1],nr_quantiles=3);
-    return optimize.fmin(obj_func,params_est2);
-
-def compute_nll_conf(remH,knowH,missH,remFA,knowFA,crFA,rem_quantiles_old,know_quantiles_old,rem_quantiles_new,know_quantiles_new,data_old,data_new):
-    
-    old = len(remH)+len(knowH)+len(missH);
-    new = len(remFA)+len(knowFA)+len(crFA);
-    # print old;
-
-    rem_freqs_old = -diff([sum(remH>q) for q in rem_quantiles_old]+[0]);
-    know_freqs_old = -diff([sum(knowH>q) for q in know_quantiles_old]+[0]);
-    x_old = hstack([rem_freqs_old,know_freqs_old]);
-    
-    p_rem = data_old[0]*ones(NR_QUANTILES)/float(NR_QUANTILES);
-    p_know = data_old[1]*ones(NR_QUANTILES)/float(NR_QUANTILES);
-    p_old = hstack([p_rem,p_know]);
-    nll_old = -multinom_loglike(x_old,old,p_old)
-    
-    
-    rem_freqs_new = -diff([sum(remFA>q) for q in rem_quantiles_new]+[0]);
-    know_freqs_new = -diff([sum(knowFA>q) for q in know_quantiles_new]+[0]);
-    x_new = hstack([rem_freqs_new,know_freqs_new]);
-    
-    p_rem_n = data_new[0]*ones(NR_QUANTILES)/float(NR_QUANTILES);
-    p_know_n = data_new[1]*ones(NR_QUANTILES)/float(NR_QUANTILES);
-    p_new = hstack([p_rem_n,p_know_n]);
-    nll_new = -multinom_loglike(x_new,new,p_new)
-    nll_conf = nll_old+nll_new;
-    return nll_conf;
-
-def compute_chi_conf(remH,knowH,missH,remFA,knowFA,crFA,rem_quantiles_old,know_quantiles_old,rem_quantiles_new,know_quantiles_new,data_old,data_new):
-    
-    old = len(remH)+len(knowH)+len(missH);
-    new = len(remFA)+len(knowFA)+len(crFA);
-    #print old;
-
-    rem_freqs_old = -diff([sum(remH>q) for q in rem_quantiles_old]+[0]);
-    know_freqs_old = -diff([sum(knowH>q) for q in know_quantiles_old]+[0]);
-    x_old = hstack([rem_freqs_old,know_freqs_old]); 
-    
-    p_rem = data_old[0]*ones(NR_QUANTILES)/float(NR_QUANTILES);
-    p_know = data_old[1]*ones(NR_QUANTILES)/float(NR_QUANTILES);
-    p_old = hstack([p_rem,p_know]); 
-    chi_old = chi_square_gof(x_old,old,p_old)
-    
-    
-    rem_freqs_new = -diff([sum(remFA>q) for q in rem_quantiles_new]+[0]);
-    know_freqs_new = -diff([sum(knowFA>q) for q in know_quantiles_new]+[0]);
-    x_new = hstack([rem_freqs_new,know_freqs_new]); 
-    
-    p_rem_n = data_new[0]*ones(NR_QUANTILES)/float(NR_QUANTILES);
-    p_know_n = data_new[1]*ones(NR_QUANTILES)/float(NR_QUANTILES);
-    p_new = hstack([p_rem_n,p_know_n]);
-    chi_new = chi_square_gof(x_new,new,p_new)
-    chi_conf = chi_old+chi_new;
-    return chi_conf;
-
-def compute_full_model_gof(full_model_params,old_data,new_data):
-    c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT = full_model_params;
-    mu_f0 = mu_r0 =0;
-    params_est_old = [c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT];
-    params_est_new = [c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT];
-    old_data = [rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1]];
-    new_data = [rem_fa[:,0],know_fa[:,0],CR[:,0],rem_fa[:,1],know_fa[:,1]];
-    res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
-    compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
-    return res;
-
 
 def compute_model_gof(model_params,old_RTs,new_RTs,old_conf,nr_quantiles=4):
     # computes the chi square fit of the model to the data
@@ -303,39 +222,33 @@ def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
             p_old_conf[j-1,i] = p_old[i]*diff(stats.norm.cdf([clims[j],clims[j-1]],mu_delta,s_delta));
     return p_old_conf,p_new,t;
 
-# TODO: rewrite the code below to simulate the single process model
-
-#def predicted_proportions_sim(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0):
-def predicted_proportions_sim(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT):
+# updated to simulate the single process model
+def predicted_proportions_sim(c,mu_f,d_f,tc_bound,z0,deltaT):
     # make c (the confidence levels) an array in case it is a scalar value
     c = array(c,ndmin=1);
     n = len(c);
+    
     # form an array consisting of the appropriate (upper) integration limits
     clims = hstack(([INF_PROXY],c,[-INF_PROXY]));
     # compute process SD
-    sigma_r = sqrt(2*d_r*DELTA_T);
     sigma_f = sqrt(2*d_f*DELTA_T);
-    sigma = sqrt(sigma_r**2+sigma_f**2);
-    
-    t = linspace(DELTA_T,MAX_T,NR_TSTEPS);
+    sigma = sigma_f;
+
+    t = linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
     bound = exp(-tc_bound*t); # this is the collapsing bound
 
     # Now simulate NR_SAMPLES trials
     # 1. Generate a random position change for each time interval
     #   these position changes should be drawn from a normal distribution with mean
     #   mu and standard deviation sigma
-
-    delta_r = stats.norm.rvs(mu_r*DELTA_T,sigma_r,size=(NR_SAMPLES,NR_TSTEPS));
-    delta_f = stats.norm.rvs(mu_f*DELTA_T,sigma_f,size=(NR_SAMPLES,NR_TSTEPS));
-    delta_pos = delta_r+delta_f;
+    delta_pos = stats.norm.rvs(mu_f*DELTA_T,sigma,size=(NR_SAMPLES,NR_TSTEPS));
 
     # 2. Use cumsum to compute absolute positions from delta_pos
     positions = pl.cumsum(delta_pos,1)+z0;
-    r_positions = pl.cumsum(delta_r,1);
     # 3. Now loop through each sample trial to compute decisions and resp times
     decisions = zeros(NR_SAMPLES);
     resp_times = zeros(NR_SAMPLES);
-    final_pos = zeros((NR_SAMPLES,2))
+    final_pos = zeros(NR_SAMPLES)
     
     for i, pos in enumerate(positions):
         # Find the index where the position first crosses a boundary (i.e., 1 or -1)
@@ -347,47 +260,34 @@ def predicted_proportions_sim(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT):
         # 4. Now we can use this index to determine both the decision and the response time
         decisions[i] = pos[cross_idx]>0;
         resp_times[i] = t[cross_idx]-0.5*DELTA_T; #i.e., the midpoint of the crossing interval
-        final_pos[i] = [pos[cross_idx],r_positions[i,cross_idx]];
+        final_pos[i] = pos[cross_idx];
         
     # compute the distribution of particle positions deltaT seconds after the
     # old/new decision and choose a random position from the resulting
     # distribution to add to the position at decision
     # the parameters below are for the post old/new decision interval
     
-    sigma_r_deltaT = sqrt(2*d_r*deltaT);
-    sigma_f_deltaT = sqrt(2*d_f*deltaT);
-    r_deltaTs = stats.norm.rvs(mu_r*deltaT,sigma_r_deltaT,size=NR_SAMPLES);
-    pos_deltaTs = stats.norm.rvs(mu_f*deltaT,sigma_f_deltaT,size=NR_SAMPLES)+r_deltaTs;
-    final_pos[:,0]+=pos_deltaTs; final_pos[:,1]+=r_deltaTs;
+    sigma_deltaT = sqrt(2*d_f*deltaT);
+    pos_deltaTs = stats.norm.rvs(mu_f*deltaT,sigma_deltaT,size=NR_SAMPLES);
+    final_pos+=pos_deltaTs;
     
-    # now make the remember decision on the basis of the final position in the
-    # r dimension
-    remembers = logical_and(decisions,final_pos[:,1]>r_bound);
-    
-    p_remember  = [];
-    p_know = [];
+    p_old = [];
     for j in range(1,len(clims)):
         # remember that the confidence levels are arranged in decreasing order
-        valid_confs = logical_and(final_pos[:,0]>clims[j],final_pos[:,0]<=clims[j-1]);
-        conf_rems = logical_and(valid_confs,remembers);
-        conf_knows = logical_and(valid_confs,logical_and(logical_not(remembers),decisions));
-        rem_RTs = resp_times[conf_rems];
-        know_RTs = resp_times[conf_knows];
-        params_rem = stats.gamma.fit(rem_RTs,floc=0);
-        params_know = stats.gamma.fit(know_RTs,floc=0);
-        p_remember_conf = stats.gamma.pdf(t,*params_rem)*DELTA_T*len(rem_RTs)/float(NR_SAMPLES);
-        p_know_conf = stats.gamma.pdf(t,*params_know)*DELTA_T*len(know_RTs)/float(NR_SAMPLES);
+        valid_confs = logical_and(final_pos>clims[j],final_pos<=clims[j-1]);
+        conf_old = logical_and(valid_confs,decisions);
+        old_RTs = resp_times[conf_old];
+        params_old = stats.gamma.fit(old_RTs,floc=0);
+        p_old_conf = stats.gamma.pdf(t,*params_old)*DELTA_T*len(old_RTs)/float(NR_SAMPLES);
         
-        p_remember.append(p_remember_conf);
-        p_know.append(p_know_conf);
+        p_old.append(p_old_conf);
         
-    p_remember = array(p_remember);
-    p_know = array(p_know);
+    p_old = array(p_old);
         
     new_RTs = resp_times[logical_not(decisions)];
     params_new = stats.gamma.fit(new_RTs,floc=0);
     p_new = stats.gamma.pdf(t,*params_new)*DELTA_T*len(new_RTs)/float(NR_SAMPLES);
-    return p_remember,p_know,p_new,t;
+    return p_old,p_new,t;
 
 # updated to compute comparison between empirical data and model predictions for
 # single-pro
