@@ -92,11 +92,11 @@ def find_ml_params_all_lm(quantiles=4):
         return res;
     return optimize.fmin(obj_func,params_est_all)
 
-def find_ml_params_all_lm_c(quantiles=2):
+def find_ml_params_all_lm_c(quantiles=2,nr_conf_bounds=2):
     # computes mle of params using a local (fast) optimization algorithm
     def obj_func(model_params):
-        c1,c2,mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT = model_params;
-        c = [c1,c2];
+        c = model_params[:nr_conf_bounds];
+        mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT = model_params[nr_conf_bounds:];
         params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT];
         params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT];
         old_data = [hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],hstack([rem_hit[:,1],know_hit[:,1]])];
@@ -144,7 +144,7 @@ def compute_model_quantiles(params,nr_quantiles=4):
     P_o = cumsum(p_old,-1)/old_total[:,newaxis];
     P_n = cumsum(p_new)/new_total;
     
-    # compute RT quantiles (by confidence level for know and rem judgments)
+    # compute RT quantiles (by confidence level)
     old_quantiles = array([t[argmax(P_o>q,-1)] for q in quantiles]).T;
     new_quantiles = array([t[argmax(P_n>q)] for q in quantiles]);
     old_quantiles[:,0] = 0;
@@ -163,6 +163,8 @@ def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
     c = array(c,ndmin=1);
     n = len(c);
     # form an array consisting of the appropriate (upper) integration limits
+    # note that the limits appear in descending order, with high confidence appearing
+    # first and low confidence appearing last within the array
     clims = hstack(([INF_PROXY],c,[-INF_PROXY]));
     # compute process SD
     sigma_f = sqrt(2*d_f*DELTA_T);
@@ -213,6 +215,8 @@ def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
     # the only thing that determines the region is the bounding interval,
     # specified in terms of f
     for j in range(1,len(clims)):
+        # based on this code, the confidence probabilities should also be in
+        # reverse (decreasing order)
         p_old_conf[j-1,0] = p_old[0]*diff(stats.norm.cdf([clims[j],clims[j-1]],mu_delta,s_delta));
         
     #######################################
@@ -318,9 +322,9 @@ def predicted_proportions_sim(c,mu_f,d_f,tc_bound,z0,deltaT):
 
 # updated to compute comparison between empirical data and model predictions for
 # single-pro
-def emp_v_prediction(model_params):
-    c1,c2,mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT = model_params;
-    c = [c1,c2];
+def emp_v_prediction(model_params,nr_conf=2):
+    c = model_params[:nr_conf]
+    mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT = model_params[nr_conf:];
     params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT];
     params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT];
     
@@ -374,29 +378,30 @@ def plot_evp_pair(p_dist,e_dist,e_total,col='g'):
     axis([0,t.max(),None,None])
     show();
     
-def plot_comparison(model_params,nr_conf=1):
-    old_data,new_data,pp_old,pp_new,n_old,n_new = emp_v_prediction(model_params);
-    nr_conf=len(pp_old[0]);
+def plot_comparison(model_params,nr_conf_bounds=2):
+    nr_conf = nr_conf_bounds+1;
+    old_data,new_data,pp_old,pp_new,n_old,n_new = emp_v_prediction(model_params,nr_conf_bounds);
+    #nr_conf=len(pp_old[0]);
     colors = ['k','r','b','g','c']
     # plot comparison for 'old' words
     figure(); title('RT Distributions for Old Words');
     c_idx = 0;
     # 1. plot misses
-    plot_evp_pair(pp_old[1],old_data[1],n_old,colors[c_idx]);
+    #plot_evp_pair(pp_old[1],old_data[1],n_old,colors[c_idx]);
     c_idx+=1;
     # 2. plot hits
     for conf in range(nr_conf):
         plot_evp_pair(pp_old[0][conf],old_data[0][conf],n_old,colors[c_idx]);
         c_idx+=1;
-    axis([0,10,0,0.6]);
+    axis([0,6,0,0.6]);
     # plot comparison for 'new' words
     figure(); title('RT Distributions for New Words');
     c_idx = 0;
     # 1. plot misses
-    plot_evp_pair(pp_new[1],new_data[1],n_new,colors[c_idx]);
+    #plot_evp_pair(pp_new[1],new_data[1],n_new,colors[c_idx]);
     c_idx+=1;
     # 2. plot hits
     for conf in range(nr_conf):
         plot_evp_pair(pp_new[0][conf],new_data[0][conf],n_new,colors[c_idx]);
         c_idx+=1;
-    axis([0,10,0,0.6]);
+    axis([0,6,0,0.6]);
