@@ -29,10 +29,10 @@ db.close();
 INF_PROXY   = 10; # a value used to provide very large but finite bounds for mvn integration
 EPS         = 1e-10 # a very small value (used for numerical stability)
 NR_THREADS  = 1;    # this is for multithreaded fft
-DELTA_T     = 0.05;  # size of discrete time increment (sec.)
-MAX_T       = 24; #ceil(percentile(all_RT,99.5))
+DELTA_T     = 0.02;# 0.05;  # size of discrete time increment (sec.)
+MAX_T       = 8.0;#24; #ceil(percentile(all_RT,99.5))
 NR_TSTEPS   = MAX_T/DELTA_T;
-NR_SSTEPS   = 4096; #8192#4096#2048;
+NR_SSTEPS   = 8192; #8192#4096#2048;
 NR_SAMPLES  = 10000; # number of trials to use for MC likelihood computation
 n = 2; # number of confidence critetion
 QUANT = array([0,0.25,0.50,0.75]);
@@ -41,29 +41,43 @@ NR_QUANTILES = 4;
 R = 0.1; D = 0.05; L = 0.1; Z = 0.0;
 
 
-
-
 fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
 
 params_est = [0.99,0.11,0.06,0.66,-0.11,1.27]; # new values from global search
 param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
 # version with free parameters for "new" words
-params_est_all = [0.99,0.11,0.06,0.11,0.06,0.66,-0.11,1.27]; # new values from global search
+params_est_all = [0.91,0.11,0.09,-0.09,0.09,0.52,-0.07,0.52]; # new values from global search
 param_bounds_all = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
 
+# version with three confidence levels
+params_est_all_c = [0.99,0.45,0.07,0.08,-0.06,0.08,0.61,-0.04,0.89];
+foo = [ 1.01010322,  0.45504496,  0.06795465,  0.08067318, -0.06151502, 0.08128747,  0.62454595, -0.0400901 ,  0.8491119 ]
+param_bounds_all_c = [(0.0,1.0),(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
+
 def find_ml_params_all(quantiles=4):
-    # computes mle of params using a global (slow) and bounded optimization algorithm
     def obj_func(model_params):
-        c,mu_old,d_old,tc_bound,z0,deltaT = model_params;
+        c,mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT = model_params;
         params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT];
-        params_est_new = [c,0,d_old,tc_bound,z0,deltaT];
+        params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT];
         old_data = [hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],hstack([rem_hit[:,1],know_hit[:,1]])];
         new_data = [hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],hstack([rem_fa[:,1],know_fa[:,1]])];
         res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
         compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
         return res;
-    #param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
-    return optimize.differential_evolution(obj_func,param_bounds)
+    return optimize.differential_evolution(obj_func,param_bounds_all)
+
+def find_ml_params_all_c(quantiles=4):
+    def obj_func(model_params):
+        c1,c2,mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT = model_params;
+        c = [c1,c2];
+        params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT];
+        params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT];
+        old_data = [hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],hstack([rem_hit[:,1],know_hit[:,1]])];
+        new_data = [hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],hstack([rem_fa[:,1],know_fa[:,1]])];
+        res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
+        compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
+        return res;
+    return optimize.differential_evolution(obj_func,param_bounds_all_c)
 
 def find_ml_params_all_lm(quantiles=4):
     # computes mle of params using a local (fast) optimization algorithm
@@ -77,6 +91,20 @@ def find_ml_params_all_lm(quantiles=4):
         compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
         return res;
     return optimize.fmin(obj_func,params_est_all)
+
+def find_ml_params_all_lm_c(quantiles=2):
+    # computes mle of params using a local (fast) optimization algorithm
+    def obj_func(model_params):
+        c1,c2,mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT = model_params;
+        c = [c1,c2];
+        params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT];
+        params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT];
+        old_data = [hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],hstack([rem_hit[:,1],know_hit[:,1]])];
+        new_data = [hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],hstack([rem_fa[:,1],know_fa[:,1]])];
+        res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
+        compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
+        return res;
+    return optimize.fmin(obj_func,params_est_all_c)
 
 def find_ml_params():
     obj_func = lambda model_params:compute_model_gof(model_params,rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1],nr_quantiles=3);
@@ -107,8 +135,6 @@ def compute_model_quantiles(params,nr_quantiles=4):
     # This function is set up to deal with multiple confidence levels
     quantile_increment = 1.0/nr_quantiles;
     quantiles = arange(0,1,quantile_increment);
-    # unpack model parameters
-    # c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,delta_t = params;
     # compute marginal distributions
     p_old,p_new,t = predicted_proportions(*params);
     # compute marginal category proportions (per confidence level)
@@ -293,14 +319,15 @@ def predicted_proportions_sim(c,mu_f,d_f,tc_bound,z0,deltaT):
 # updated to compute comparison between empirical data and model predictions for
 # single-pro
 def emp_v_prediction(model_params):
-    c,mu_f,d_f,tc_bound,z0,deltaT = model_params;
-    params_est_old = [c,mu_f,d_f,tc_bound,z0,deltaT];
-    params_est_new = [c,0,d_f,tc_bound,z0,deltaT];
+    c1,c2,mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT = model_params;
+    c = [c1,c2];
+    params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT];
+    params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT];
     
     hits = vstack([rem_hit,know_hit]);
     FAs = vstack([rem_fa,know_fa]);
 
-    nr_conf = 1;
+    nr_conf = len(c);
     # adjust the number of confidence levels in the data to match number in model
     hconf = clip(hits[:,1],0,nr_conf);
     fconf = clip(FAs[:,1],0,nr_conf);
@@ -349,6 +376,7 @@ def plot_evp_pair(p_dist,e_dist,e_total,col='g'):
     
 def plot_comparison(model_params,nr_conf=1):
     old_data,new_data,pp_old,pp_new,n_old,n_new = emp_v_prediction(model_params);
+    nr_conf=len(pp_old[0]);
     colors = ['k','r','b','g','c']
     # plot comparison for 'old' words
     figure(); title('RT Distributions for Old Words');
