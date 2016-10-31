@@ -50,9 +50,13 @@ params_est_all = [0.91,0.11,0.09,-0.09,0.09,0.52,-0.07,0.52]; # new values from 
 param_bounds_all = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
 
 # version with three confidence levels
-params_est_all_c = [0.99,0.45,0.07,0.08,-0.06,0.08,0.61,-0.04,0.89];
-foo = [ 1.01010322,  0.45504496,  0.06795465,  0.08067318, -0.06151502, 0.08128747,  0.62454595, -0.0400901 ,  0.8491119 ]
+params_est_all_c = [0.589,0.0026,0.119,0.156,-0.197,0.128,0.370,0.0351,0.701,0];
 param_bounds_all_c = [(0.0,1.0),(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
+
+# TODO: The predicted RT distributions all seem to be a little too short in mean/median
+# duration.
+# I should modify the existing model by adding a temporal offset that will have the effect
+# of imposing a constant wait time before the evidence begins to accumulate.
 
 def find_ml_params_all(quantiles=4):
     def obj_func(model_params):
@@ -92,13 +96,13 @@ def find_ml_params_all_lm(quantiles=4):
         return res;
     return optimize.fmin(obj_func,params_est_all)
 
-def find_ml_params_all_lm_c(quantiles=2,nr_conf_bounds=2):
+def find_ml_params_all_lm_c(quantiles=4,nr_conf_bounds=2):
     # computes mle of params using a local (fast) optimization algorithm
     def obj_func(model_params):
         c = model_params[:nr_conf_bounds];
-        mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT = model_params[nr_conf_bounds:];
-        params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT];
-        params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT];
+        mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT,t_offset = model_params[nr_conf_bounds:];
+        params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT,t_offset];
+        params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT,t_offset];
         old_data = [hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],hstack([rem_hit[:,1],know_hit[:,1]])];
         new_data = [hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],hstack([rem_fa[:,1],know_fa[:,1]])];
         res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
@@ -162,7 +166,7 @@ def compute_model_quantiles(params,nr_quantiles=4):
 # One major advantage is that we can eliminate at least 3 parameters:
 # mu_r, d_r, and r_bound
 
-def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
+def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0,use_fftw=True):
     # make c (the confidence levels) an array in case it is a scalar value
     c = array(c,ndmin=1);
     n = len(c);
@@ -175,7 +179,8 @@ def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
     sigma = sigma_f;
 
     t = linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
-    bound = exp(-tc_bound*t); # this is the collapsing bound
+    to_idx = argmin((t-t_offset)**2); # compute the index for t_offset
+    bound = exp(-tc_bound*clip(t-t_offset,0,None)); # this is the collapsing bound
      
     mu = mu_f*DELTA_T; # this is the expected drift over time interval DELTA_T
     # compute the bounding limit of the space domain. This should include at
@@ -193,6 +198,8 @@ def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
         ft_kernel = fft(kernel);
     tx = zeros((len(t),len(x)));
     
+    
+    
     # Construct arrays to hold RT distributions
     p_old = zeros(shape(t));
     p_new = zeros(shape(t));
@@ -201,17 +208,17 @@ def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
     ############################################
     ## take care of the first timestep #########
     ############################################
-    tx[0] = stats.norm.pdf(x,mu+z0,sigma)*delta_s;
-    p_old[0] = sum(tx[0][x>=bound[0]]);
-    p_new[0] = sum(tx[0][x<=-bound[0]]);
+    tx[to_idx] = stats.norm.pdf(x,mu+z0,sigma)*delta_s;
+    p_old[to_idx] = sum(tx[0][x>=bound[to_idx]]);
+    p_new[to_idx] = sum(tx[to_idx][x<=-bound[to_idx]]);
     
     # remove from consideration any particles that already hit the bound
-    tx[0]*=(abs(x)<bound[0]);
+    tx[to_idx]*=(abs(x)<bound[to_idx]);
     
     ############################################################################
     # compute the parameters for the distribution of particle locations
     # deltaT seconds after old/new decision
-    mu_delta = mu_f*deltaT+bound[0];
+    mu_delta = mu_f*deltaT+bound[to_idx];
     s_delta = sqrt(2*d_f*deltaT);
     
     # compute the probability that the particle falls within the region for
@@ -221,13 +228,14 @@ def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
     for j in range(1,len(clims)):
         # based on this code, the confidence probabilities should also be in
         # reverse (decreasing order)
-        p_old_conf[j-1,0] = p_old[0]*diff(stats.norm.cdf([clims[j],clims[j-1]],mu_delta,s_delta));
+        p_old_conf[j-1,to_idx] = p_old[to_idx]*diff(stats.norm.cdf([clims[j],clims[j-1]],\
+                                                    mu_delta,s_delta));
         
     #######################################
     ## take care of subsequent timesteps ##
     #######################################
     
-    for i in range(1,len(t)):
+    for i in range(to_idx+1,len(t)):
         # convolve the particle distribution from the previous timestep
         # with the diffusion kernel (using Fourier domain convolution)
         if(use_fftw):
@@ -258,7 +266,7 @@ def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
     return p_old_conf,p_new,t;
 
 # updated to simulate the single process model
-def predicted_proportions_sim(c,mu_f,d_f,tc_bound,z0,deltaT):
+def predicted_proportions_sim(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0):
     # make c (the confidence levels) an array in case it is a scalar value
     c = array(c,ndmin=1);
     n = len(c);
@@ -340,8 +348,9 @@ def emp_v_prediction(model_params,nr_conf=2):
     hconf = clip(hits[:,1],0,nr_conf);
     fconf = clip(FAs[:,1],0,nr_conf);
     
-    h_rts = [hits[hconf==i,0] for i in unique(hconf)];
-    f_rts = [FAs[fconf==i,0] for i in unique(fconf)];
+    # flip the arrays below so that the confidence levels appear in descending order
+    h_rts = [hits[hconf==i,0] for i in reversed(unique(hconf))];
+    f_rts = [FAs[fconf==i,0] for i in reversed(unique(fconf))];
 
     old_data = [h_rts,miss[:,0]];
     new_data = [f_rts,CR[:,0]];
@@ -391,7 +400,7 @@ def plot_comparison(model_params,nr_conf_bounds=2):
     figure(); title('RT Distributions for Old Words');
     c_idx = 0;
     # 1. plot misses
-    #plot_evp_pair(pp_old[1],old_data[1],n_old,colors[c_idx]);
+    plot_evp_pair(pp_old[1],old_data[1],n_old,colors[c_idx]);
     c_idx+=1;
     # 2. plot hits
     for conf in range(nr_conf):
@@ -402,7 +411,7 @@ def plot_comparison(model_params,nr_conf_bounds=2):
     figure(); title('RT Distributions for New Words');
     c_idx = 0;
     # 1. plot misses
-    #plot_evp_pair(pp_new[1],new_data[1],n_new,colors[c_idx]);
+    plot_evp_pair(pp_new[1],new_data[1],n_new,colors[c_idx]);
     c_idx+=1;
     # 2. plot hits
     for conf in range(nr_conf):
