@@ -122,6 +122,10 @@ def compute_model_gof(model_params,old_RTs,new_RTs,old_conf,nr_quantiles=4):
     old_conf = clip(old_conf,0,nr_conf_levels-1);
     ## compute the number of RTs falling into each quantile bin
     old_freqs = array([-diff([sum(old_RTs[old_conf==i]>q) for q in old_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
+    ## I think this is where the problem was. The confidence levels in the
+    ## model are in descending order, while these (for the empircal data) are
+    ## in ascending order. I'll flip them here
+    old_freqs = flipud(old_freqs);
     new_freqs = -diff([sum(new_RTs>q) for q in new_quantiles]+[0]);
     x = hstack([old_freqs.flatten(),new_freqs]);
     
