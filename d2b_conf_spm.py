@@ -53,7 +53,9 @@ param_bounds_all = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(EPS,2.0),(0.05,1.
 params_est_all_c = [0.589,0.0026,0.119,0.156,-0.197,0.128,0.370,0.0351,0.701,0]; # values without temporal offset
 # values including temporal offset below
 params_est_all_c = [0.9367,0.0,0.3047,0.4217,-0.2659,0.3585,0.0533,-0.1185,0.499 ,0.4965];
-params_est_all_c[ 0.7431,  0.0082,  0.2057,  0.275 , -0.2379,  0.2081,  0.1769, -0.0559,  0.5716,  0.2955];
+params_est_all_c = [ 0.924,0.0,0.312,0.411,-0.255,0.346,0.053,-0.123,0.496,0.53]; # fitted w/ 10 quantiles, chisq = 655 
+#params_est_all_c = [ 0.7431,  0.0082,  0.2057,  0.275 , -0.2379,  0.2081,  0.1769, -0.0559,  0.5716,  0.2955];
+#params_est_all_c = [ 0.7431,0.0082,0.2057,0.275 ,-0.2379,0.1769,-0.0559,0.5716,0.2955]; # this is for a version with a shared diffusion parameter
 param_bounds_all_c = [(0.0,1.0),(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0),(0,0.3)];
 
 # TODO: The predicted RT distributions all seem to be a little too short in mean/median
@@ -61,19 +63,8 @@ param_bounds_all_c = [(0.0,1.0),(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(EPS,2
 # I should modify the existing model by adding a temporal offset that will have the effect
 # of imposing a constant wait time before the evidence begins to accumulate.
 
-def find_ml_params_all(quantiles=4):
-    def obj_func(model_params):
-        c,mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT = model_params;
-        params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT];
-        params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT];
-        old_data = [hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],hstack([rem_hit[:,1],know_hit[:,1]])];
-        new_data = [hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],hstack([rem_fa[:,1],know_fa[:,1]])];
-        res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
-        compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
-        return res;
-    return optimize.differential_evolution(obj_func,param_bounds_all)
 
-def find_ml_params_all_c(quantiles=4,nr_conf_bounds=2):
+def find_ml_params_all(quantiles=4,nr_conf_bounds=2):
     def obj_func(model_params):
         c = model_params[:nr_conf_bounds];
         mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT,t_offset = model_params[nr_conf_bounds:];
@@ -86,20 +77,7 @@ def find_ml_params_all_c(quantiles=4,nr_conf_bounds=2):
         return res;
     return optimize.differential_evolution(obj_func,param_bounds_all_c)
 
-def find_ml_params_all_lm(quantiles=4):
-    # computes mle of params using a local (fast) optimization algorithm
-    def obj_func(model_params):
-        c,mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT = model_params;
-        params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT];
-        params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT];
-        old_data = [hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],hstack([rem_hit[:,1],know_hit[:,1]])];
-        new_data = [hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],hstack([rem_fa[:,1],know_fa[:,1]])];
-        res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
-        compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
-        return res;
-    return optimize.fmin(obj_func,params_est_all)
-
-def find_ml_params_all_lm_c(quantiles=4,nr_conf_bounds=2):
+def find_ml_params_all_lm(quantiles=4,nr_conf_bounds=2):
     # computes mle of params using a local (fast) optimization algorithm
     def obj_func(model_params):
         c = model_params[:nr_conf_bounds];
@@ -378,12 +356,12 @@ def plot_evp_pair(p_dist,e_dist,e_total,col='g'):
     p_cat = len(e_dist)*1.0/e_total;
     
     ## compute density histogram
-    #hd,edges = histogram(e_dist,bins=40,range=[0,10],density=True);
-    #hist_density = hstack([[0],hd]);
-    #step(edges,hist_density*p_cat,color='0.5',lw=2);
+    hd,edges = histogram(e_dist,bins=40,range=[0,10],density=True);
+    hist_density = hstack([[0],hd]);
+    step(edges,hist_density*p_cat,color=col,lw=2);
     # plot the KDE for observed data
-    kde = stats.kde.gaussian_kde(e_dist);
-    plot(t,kde(t)*p_cat,col+'--',lw=2)
+    #kde = stats.kde.gaussian_kde(e_dist);
+    #plot(t,kde(t)*p_cat,col+'--',lw=2)
     ## generate the raster plot of raw RTs
     #rmin = 0;
     #rmax = max(kde(t))*0.1;
@@ -410,7 +388,7 @@ def plot_comparison(model_params,nr_conf_bounds=2):
     for conf in range(nr_conf):
         plot_evp_pair(pp_old[0][conf],old_data[0][conf],n_old,colors[c_idx]);
         c_idx+=1;
-    axis([0,6,0,0.6]);
+    axis([0,6,0,0.7]);
     # plot comparison for 'new' words
     figure(); title('RT Distributions for New Words');
     c_idx = 0;
@@ -421,4 +399,4 @@ def plot_comparison(model_params,nr_conf_bounds=2):
     for conf in range(nr_conf):
         plot_evp_pair(pp_new[0][conf],new_data[0][conf],n_new,colors[c_idx]);
         c_idx+=1;
-    axis([0,6,0,0.6]);
+    axis([0,6,0,0.7]);
