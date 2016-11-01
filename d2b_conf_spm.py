@@ -50,8 +50,11 @@ params_est_all = [0.91,0.11,0.09,-0.09,0.09,0.52,-0.07,0.52]; # new values from 
 param_bounds_all = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
 
 # version with three confidence levels
-params_est_all_c = [0.589,0.0026,0.119,0.156,-0.197,0.128,0.370,0.0351,0.701,0];
-param_bounds_all_c = [(0.0,1.0),(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
+params_est_all_c = [0.589,0.0026,0.119,0.156,-0.197,0.128,0.370,0.0351,0.701,0]; # values without temporal offset
+# values including temporal offset below
+params_est_all_c = [0.9367,0.0,0.3047,0.4217,-0.2659,0.3585,0.0533,-0.1185,0.499 ,0.4965];
+params_est_all_c[ 0.7431,  0.0082,  0.2057,  0.275 , -0.2379,  0.2081,  0.1769, -0.0559,  0.5716,  0.2955];
+param_bounds_all_c = [(0.0,1.0),(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0),(0,0.3)];
 
 # TODO: The predicted RT distributions all seem to be a little too short in mean/median
 # duration.
@@ -70,12 +73,12 @@ def find_ml_params_all(quantiles=4):
         return res;
     return optimize.differential_evolution(obj_func,param_bounds_all)
 
-def find_ml_params_all_c(quantiles=4):
+def find_ml_params_all_c(quantiles=4,nr_conf_bounds=2):
     def obj_func(model_params):
-        c1,c2,mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT = model_params;
-        c = [c1,c2];
-        params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT];
-        params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT];
+        c = model_params[:nr_conf_bounds];
+        mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT,t_offset = model_params[nr_conf_bounds:];
+        params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT,t_offset];
+        params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT,t_offset];
         old_data = [hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],hstack([rem_hit[:,1],know_hit[:,1]])];
         new_data = [hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],hstack([rem_fa[:,1],know_fa[:,1]])];
         res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
@@ -181,6 +184,7 @@ def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0,use_fftw=True
     t = linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
     to_idx = argmin((t-t_offset)**2); # compute the index for t_offset
     bound = exp(-tc_bound*clip(t-t_offset,0,None)); # this is the collapsing bound
+    bound = exp(-tc_bound*t); # this is the collapsing bound
      
     mu = mu_f*DELTA_T; # this is the expected drift over time interval DELTA_T
     # compute the bounding limit of the space domain. This should include at
@@ -336,9 +340,9 @@ def predicted_proportions_sim(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0):
 # single-pro
 def emp_v_prediction(model_params,nr_conf=2):
     c = model_params[:nr_conf]
-    mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT = model_params[nr_conf:];
-    params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT];
-    params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT];
+    mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT,t_offset = model_params[nr_conf:];
+    params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT,t_offset];
+    params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT,t_offset];
     
     hits = vstack([rem_hit,know_hit]);
     FAs = vstack([rem_fa,know_fa]);
