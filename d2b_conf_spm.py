@@ -52,48 +52,43 @@ param_bounds_all = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(EPS,2.0),(0.05,1.
 # version with three confidence levels
 params_est_all_c = [0.589,0.0026,0.119,0.156,-0.197,0.128,0.370,0.0351,0.701,0]; # values without temporal offset
 # values including temporal offset below
-params_est_all_c = [0.9367,0.0,0.3047,0.4217,-0.2659,0.3585,0.0533,-0.1185,0.499 ,0.4965];
+#params_est_all_c = [0.9367,0.0,0.3047,0.4217,-0.2659,0.3585,0.0533,-0.1185,0.499 ,0.4965];
 params_est_all_c = [ 0.924,0.0,0.312,0.411,-0.255,0.346,0.053,-0.123,0.496,0.53]; # fitted w/ 10 quantiles, chisq = 655 
-#params_est_all_c = [ 0.7431,  0.0082,  0.2057,  0.275 , -0.2379,  0.2081,  0.1769, -0.0559,  0.5716,  0.2955];
-#params_est_all_c = [ 0.7431,0.0082,0.2057,0.275 ,-0.2379,0.1769,-0.0559,0.5716,0.2955]; # this is for a version with a shared diffusion parameter
 param_bounds_all_c = [(0.0,1.0),(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0),(0,0.3)];
 
-# TODO: The predicted RT distributions all seem to be a little too short in mean/median
-# duration.
-# I should modify the existing model by adding a temporal offset that will have the effect
-# of imposing a constant wait time before the evidence begins to accumulate.
+# version with single diffusion parameter and lowest confidence bound fixed at zero
+params_est_all_rp = [0.9169,0.319,0.3888,-0.265,0.0505,-0.1198,0.4968,0.5799]; # fitted w/ 10 quantiles, chisq = 606
 
 
 def find_ml_params_all(quantiles=4,nr_conf_bounds=2):
-    def obj_func(model_params):
-        c = model_params[:nr_conf_bounds];
-        mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT,t_offset = model_params[nr_conf_bounds:];
-        params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT,t_offset];
-        params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT,t_offset];
-        old_data = [hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],hstack([rem_hit[:,1],know_hit[:,1]])];
-        new_data = [hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],hstack([rem_fa[:,1],know_fa[:,1]])];
-        res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
-        compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
-        return res;
-    return optimize.differential_evolution(obj_func,param_bounds_all_c)
+    return optimize.differential_evolution(compute_gof_all,param_bounds_all_c)
 
 def find_ml_params_all_lm(quantiles=4,nr_conf_bounds=2):
     # computes mle of params using a local (fast) optimization algorithm
-    def obj_func(model_params):
-        c = model_params[:nr_conf_bounds];
-        mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT,t_offset = model_params[nr_conf_bounds:];
-        params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT,t_offset];
-        params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT,t_offset];
+    return optimize.fmin(compute_gof_all,params_est_all_c)
+
+#def find_ml_params_all_lm_rp(quantiles=4):
+#    # computes mle of params using a local (fast) optimization algorithm
+#    def obj_func(model_params):
+#        c,mu_old,d,mu_new,tc_bound,z0,deltaT,t_offset = model_params;
+#        params_est_old = [[c,0],mu_old,d,tc_bound,z0,deltaT,t_offset];
+#        params_est_new = [[c,0],mu_new,d,tc_bound,z0,deltaT,t_offset];
+#        old_data = [hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],hstack([rem_hit[:,1],know_hit[:,1]])];
+#        new_data = [hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],hstack([rem_fa[:,1],know_fa[:,1]])];
+#        res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
+#        compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
+#        return res;
+#    return optimize.fmin(obj_func,params_est_all_rp)
+
+def compute_gof_all(model_params,quantiles=4):
+        c,mu_old,d,mu_new,tc_bound,z0,deltaT,t_offset = model_params;
+        params_est_old = [[c,0],mu_old,d,tc_bound,z0,deltaT,t_offset];
+        params_est_new = [[c,0],mu_new,d,tc_bound,z0,deltaT,t_offset];
         old_data = [hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],hstack([rem_hit[:,1],know_hit[:,1]])];
         new_data = [hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],hstack([rem_fa[:,1],know_fa[:,1]])];
         res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
         compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
         return res;
-    return optimize.fmin(obj_func,params_est_all_c)
-
-def find_ml_params():
-    obj_func = lambda model_params:compute_model_gof(model_params,rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1],nr_quantiles=3);
-    return optimize.differential_evolution(obj_func,param_bounds);
 
 def compute_model_gof(model_params,old_RTs,new_RTs,old_conf,nr_quantiles=4):
     # computes the chi square fit of the model to the data
@@ -161,6 +156,7 @@ def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0,use_fftw=True
 
     t = linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
     to_idx = argmin((t-t_offset)**2); # compute the index for t_offset
+    to_idx = 0;
     bound = exp(-tc_bound*clip(t-t_offset,0,None)); # this is the collapsing bound
     bound = exp(-tc_bound*t); # this is the collapsing bound
      
@@ -235,7 +231,7 @@ def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0,use_fftw=True
         p_old[i] = sum(p_pos); # total probability that particle crosses upper bound
         p_new[i] = sum(tx[i][x<=-bound[i]]); # probability that particle crosses lower bound
         
-               # remove from consideration any particles that already hit the bound
+        # remove from consideration any particles that already hit the bound
         tx[i]*=(abs(x)<bound[i]);
         
         # compute the parameters for the distribution of particle locations
@@ -247,7 +243,6 @@ def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0,use_fftw=True
             p_old_conf[j-1,i] = p_old[i]*diff(stats.norm.cdf([clims[j],clims[j-1]],mu_delta,s_delta));
     return p_old_conf,p_new,t;
 
-# updated to simulate the single process model
 def predicted_proportions_sim(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0):
     # make c (the confidence levels) an array in case it is a scalar value
     c = array(c,ndmin=1);
@@ -314,13 +309,16 @@ def predicted_proportions_sim(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0):
     p_new = stats.gamma.pdf(t,*params_new)*DELTA_T*len(new_RTs)/float(NR_SAMPLES);
     return p_old,p_new,t;
 
-# updated to compute comparison between empirical data and model predictions for
-# single-pro
+
+##########################################################################################
+## Plotting functions
+##########################################################################################
+
 def emp_v_prediction(model_params,nr_conf=2):
-    c = model_params[:nr_conf]
-    mu_old,d_old,mu_new,d_new,tc_bound,z0,deltaT,t_offset = model_params[nr_conf:];
+    conf,mu_old,d_old,mu_new,tc_bound,z0,deltaT,t_offset = model_params;
+    c = [conf,0]
     params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT,t_offset];
-    params_est_new = [c,mu_new,d_new,tc_bound,z0,deltaT,t_offset];
+    params_est_new = [c,mu_new,d_old,tc_bound,z0,deltaT,t_offset];
     
     hits = vstack([rem_hit,know_hit]);
     FAs = vstack([rem_fa,know_fa]);
