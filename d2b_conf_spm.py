@@ -9,6 +9,11 @@ import fftw_test as fftw
 from multinomial_funcs import multinom_loglike,chi_square_gof
 from scipy.stats import gaussian_kde
 
+# set a few global matplotlib plotting parameters
+rcParams['legend.frameon'] = 'False'
+rcParams['font.family'] = 'Arial'
+rcParams['font.size'] = 16.0
+
 data_path = 'neha/data/'; # this is the base path for the data files
 
 ## Start by reading in the data.
@@ -41,44 +46,19 @@ R = 0.1; D = 0.05; L = 0.1; Z = 0.0;
 
 fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
 
-params_est = [0.99,0.11,0.06,0.66,-0.11,1.27]; # new values from global search
-param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
-# version with free parameters for "new" words
-params_est_all = [0.91,0.11,0.09,-0.09,0.09,0.52,-0.07,0.52]; # new values from global search
-param_bounds_all = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0)];
-
-# version with three confidence levels
-params_est_all_c = [0.589,0.0026,0.119,0.156,-0.197,0.128,0.370,0.0351,0.701,0]; # values without temporal offset
-# values including temporal offset below
-#params_est_all_c = [0.9367,0.0,0.3047,0.4217,-0.2659,0.3585,0.0533,-0.1185,0.499 ,0.4965];
-params_est_all_c = [ 0.924,0.0,0.312,0.411,-0.255,0.346,0.053,-0.123,0.496,0.53]; # fitted w/ 10 quantiles, chisq = 655 
-param_bounds_all_c = [(0.0,1.0),(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(EPS,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0),(0,0.3)];
-
+# previously fitted parameters and bounds
 # version with single diffusion parameter and lowest confidence bound fixed at zero
-params_est_all_rp = [0.9169,0.319,0.3888,-0.265,0.0505,-0.1198,0.4968,0.5799]; # fitted w/ 10 quantiles, chisq = 606
-params_est_all_rp = [ 0.9452,  0.3236,  0.4126, -0.2745,  0.0486, -0.124 ,  0.5001, 0.5527]; # fitted w/ 10 quantiles, chisq = 440
-param_bounds_all_rp = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0),(0,0.3)];
+params_est_old = [0.9169,0.319,0.3888,-0.265,0.0505,-0.1198,0.4968,0.5799]; # fitted w/ 10 quantiles, chisq = 606
+params_est = [ 0.9452,  0.3236,  0.4126, -0.2745,  0.0486, -0.124 ,  0.5001, 0.5527]; # fitted w/ 10 quantiles, chisq = 440
+param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0),(0,0.3)];
 
 
 def find_ml_params_all(quantiles=4,nr_conf_bounds=2):
-    return optimize.differential_evolution(compute_gof_all,param_bounds_all_rp)
+    return optimize.differential_evolution(compute_gof_all,param_bounds)
 
 def find_ml_params_all_lm(quantiles=4,nr_conf_bounds=2):
     # computes mle of params using a local (fast) optimization algorithm
-    return optimize.fmin(compute_gof_all,params_est_all_rp)
-
-#def find_ml_params_all_lm_rp(quantiles=4):
-#    # computes mle of params using a local (fast) optimization algorithm
-#    def obj_func(model_params):
-#        c,mu_old,d,mu_new,tc_bound,z0,deltaT,t_offset = model_params;
-#        params_est_old = [[c,0],mu_old,d,tc_bound,z0,deltaT,t_offset];
-#        params_est_new = [[c,0],mu_new,d,tc_bound,z0,deltaT,t_offset];
-#        old_data = [hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],hstack([rem_hit[:,1],know_hit[:,1]])];
-#        new_data = [hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],hstack([rem_fa[:,1],know_fa[:,1]])];
-#        res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
-#        compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
-#        return res;
-#    return optimize.fmin(obj_func,params_est_all_rp)
+    return optimize.fmin(compute_gof_all,params_est)
 
 def compute_gof_all(model_params,quantiles=4):
         c,mu_old,d,mu_new,tc_bound,z0,deltaT,t_offset = model_params;
@@ -381,7 +361,8 @@ def plot_comparison(model_params,nr_conf_bounds=2):
     #nr_conf=len(pp_old[0]);
     colors = ['k','r','b','g','c']
     # plot comparison for 'old' words
-    figure(); title('RT Distributions for Old Words');
+    figure(figsize=(12,5));
+    subplot(1,2,1);
     curves = [];
     c_idx = 0;
     # 1. plot misses
@@ -394,10 +375,13 @@ def plot_comparison(model_params,nr_conf_bounds=2):
         curves.append(curve);
         c_idx+=1;
     axis([0,6,0,0.7]);
-    legend(curves,['new','new, conf=2','new, conf=1','new, conf=0'],loc='best',frameon=False)
+    title('RT Distributions for Old Words');
+    xlabel('Reaction time (sec.)');
+    ylabel('p(RT,judgment)');
+    legend(curves,['new','old, conf=2','old, conf=1','old, conf=0'],loc='best')
     
     # plot comparison for 'new' words
-    figure(); title('RT Distributions for New Words');
+    subplot(1,2,2);
     curves = [];
     c_idx = 0;
     # 1. plot misses
@@ -410,4 +394,6 @@ def plot_comparison(model_params,nr_conf_bounds=2):
         curves.append(curve);
         c_idx+=1;
     axis([0,6,0,0.7]);
-    legend(curves,['new','new, conf=2','new, conf=1','new, conf=0'],loc='best',frameon=False)
+    title('RT Distributions for Old Words');
+    xlabel('Reaction time (sec.)');
+    #legend(curves,['new','old, conf=2','old, conf=1','old, conf=0'],loc='best')
