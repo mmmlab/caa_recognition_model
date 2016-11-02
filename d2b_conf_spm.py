@@ -30,13 +30,11 @@ INF_PROXY   = 10; # a value used to provide very large but finite bounds for mvn
 EPS         = 1e-10 # a very small value (used for numerical stability)
 NR_THREADS  = 1;    # this is for multithreaded fft
 DELTA_T     = 0.02;# 0.05;  # size of discrete time increment (sec.)
-MAX_T       = 8.0;#24; #ceil(percentile(all_RT,99.5))
-NR_TSTEPS   = MAX_T/DELTA_T;
-NR_SSTEPS   = 8192; #8192#4096#2048;
+MAX_T       = 8.0; #ceil(percentile(all_RT,99.5))
+NR_TSTEPS   = MAX_T/DELTA_T; # number of steps along the temporal axis
+NR_SSTEPS   = 8192; # number of steps along the spatial axis
 NR_SAMPLES  = 10000; # number of trials to use for MC likelihood computation
-n = 2; # number of confidence critetion
-QUANT = array([0,0.25,0.50,0.75]);
-QUANT_DIFF = 0.25;
+n = 2; # number of confidence criteria
 NR_QUANTILES = 4;
 R = 0.1; D = 0.05; L = 0.1; Z = 0.0;
 
@@ -58,14 +56,16 @@ param_bounds_all_c = [(0.0,1.0),(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(EPS,2
 
 # version with single diffusion parameter and lowest confidence bound fixed at zero
 params_est_all_rp = [0.9169,0.319,0.3888,-0.265,0.0505,-0.1198,0.4968,0.5799]; # fitted w/ 10 quantiles, chisq = 606
+params_est_all_rp = [ 0.9452,  0.3236,  0.4126, -0.2745,  0.0486, -0.124 ,  0.5001, 0.5527]; # fitted w/ 10 quantiles, chisq = 440
+param_bounds_all_rp = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0),(0,0.3)];
 
 
 def find_ml_params_all(quantiles=4,nr_conf_bounds=2):
-    return optimize.differential_evolution(compute_gof_all,param_bounds_all_c)
+    return optimize.differential_evolution(compute_gof_all,param_bounds_all_rp)
 
 def find_ml_params_all_lm(quantiles=4,nr_conf_bounds=2):
     # computes mle of params using a local (fast) optimization algorithm
-    return optimize.fmin(compute_gof_all,params_est_all_c)
+    return optimize.fmin(compute_gof_all,params_est_all_rp)
 
 #def find_ml_params_all_lm_rp(quantiles=4):
 #    # computes mle of params using a local (fast) optimization algorithm
@@ -156,9 +156,7 @@ def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0,use_fftw=True
 
     t = linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
     to_idx = argmin((t-t_offset)**2); # compute the index for t_offset
-    to_idx = 0;
     bound = exp(-tc_bound*clip(t-t_offset,0,None)); # this is the collapsing bound
-    bound = exp(-tc_bound*t); # this is the collapsing bound
      
     mu = mu_f*DELTA_T; # this is the expected drift over time interval DELTA_T
     # compute the bounding limit of the space domain. This should include at
@@ -243,6 +241,9 @@ def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0,use_fftw=True
             p_old_conf[j-1,i] = p_old[i]*diff(stats.norm.cdf([clims[j],clims[j-1]],mu_delta,s_delta));
     return p_old_conf,p_new,t;
 
+# This is a Monte-Carlo simulation approach to approximating the same RT distributions
+# that are computed in predicted_proportions (above). I include it here as a sanity check
+# and as a more accessible description of what the code above is doing.
 def predicted_proportions_sim(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0):
     # make c (the confidence levels) an array in case it is a scalar value
     c = array(c,ndmin=1);
@@ -255,13 +256,16 @@ def predicted_proportions_sim(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0):
     sigma = sigma_f;
 
     t = linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
-    bound = exp(-tc_bound*t); # this is the collapsing bound
-
+    to_idx = argmin((t-t_offset)**2); # compute the index for t_offset
+    bound = exp(-tc_bound*clip(t-t_offset,0,None)); # this is the collapsing bound
     # Now simulate NR_SAMPLES trials
     # 1. Generate a random position change for each time interval
     #   these position changes should be drawn from a normal distribution with mean
     #   mu and standard deviation sigma
     delta_pos = stats.norm.rvs(mu_f*DELTA_T,sigma,size=(NR_SAMPLES,NR_TSTEPS));
+    # for timesteps before t_offset, we're not accumulating any information
+    # therefore set the delta_pos for these timesteps to 0
+    delta_pos[:to_idx] = 0;
 
     # 2. Use cumsum to compute absolute positions from delta_pos
     positions = pl.cumsum(delta_pos,1)+z0;
@@ -286,7 +290,6 @@ def predicted_proportions_sim(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0):
     # old/new decision and choose a random position from the resulting
     # distribution to add to the position at decision
     # the parameters below are for the post old/new decision interval
-    
     sigma_deltaT = sqrt(2*d_f*deltaT);
     pos_deltaTs = stats.norm.rvs(mu_f*deltaT,sigma_deltaT,size=NR_SAMPLES);
     final_pos+=pos_deltaTs;
@@ -356,7 +359,7 @@ def plot_evp_pair(p_dist,e_dist,e_total,col='g'):
     ## compute density histogram
     hd,edges = histogram(e_dist,bins=40,range=[0,10],density=True);
     hist_density = hstack([[0],hd]);
-    step(edges,hist_density*p_cat,color=col,lw=2);
+    curve = plot(edges,hist_density*p_cat,color=col,lw=2,ls='--',drawstyle='steps');
     # plot the KDE for observed data
     #kde = stats.kde.gaussian_kde(e_dist);
     #plot(t,kde(t)*p_cat,col+'--',lw=2)
@@ -370,6 +373,7 @@ def plot_evp_pair(p_dist,e_dist,e_total,col='g'):
     plot(t,p_dist/DELTA_T,col,lw=2)
     axis([0,t.max(),None,None])
     show();
+    return curve;
     
 def plot_comparison(model_params,nr_conf_bounds=2):
     nr_conf = nr_conf_bounds+1;
@@ -378,23 +382,32 @@ def plot_comparison(model_params,nr_conf_bounds=2):
     colors = ['k','r','b','g','c']
     # plot comparison for 'old' words
     figure(); title('RT Distributions for Old Words');
+    curves = [];
     c_idx = 0;
     # 1. plot misses
-    plot_evp_pair(pp_old[1],old_data[1],n_old,colors[c_idx]);
+    curve, = plot_evp_pair(pp_old[1],old_data[1],n_old,colors[c_idx]);
+    curves.append(curve);
     c_idx+=1;
     # 2. plot hits
     for conf in range(nr_conf):
-        plot_evp_pair(pp_old[0][conf],old_data[0][conf],n_old,colors[c_idx]);
+        curve, = plot_evp_pair(pp_old[0][conf],old_data[0][conf],n_old,colors[c_idx]);
+        curves.append(curve);
         c_idx+=1;
     axis([0,6,0,0.7]);
+    legend(curves,['new','new, conf=2','new, conf=1','new, conf=0'],loc='best',frameon=False)
+    
     # plot comparison for 'new' words
     figure(); title('RT Distributions for New Words');
+    curves = [];
     c_idx = 0;
     # 1. plot misses
-    plot_evp_pair(pp_new[1],new_data[1],n_new,colors[c_idx]);
+    curve, = plot_evp_pair(pp_new[1],new_data[1],n_new,colors[c_idx]);
+    curves.append(curve);
     c_idx+=1;
     # 2. plot hits
     for conf in range(nr_conf):
-        plot_evp_pair(pp_new[0][conf],new_data[0][conf],n_new,colors[c_idx]);
+        curve, = plot_evp_pair(pp_new[0][conf],new_data[0][conf],n_new,colors[c_idx]);
+        curves.append(curve);
         c_idx+=1;
     axis([0,6,0,0.7]);
+    legend(curves,['new','new, conf=2','new, conf=1','new, conf=0'],loc='best',frameon=False)
