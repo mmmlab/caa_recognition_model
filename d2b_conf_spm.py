@@ -1,5 +1,4 @@
 import shelve
-#from pylab import *
 import pylab as pl
 from pylab import fft,ifft,fftshift,ifftshift
 from scipy import stats
