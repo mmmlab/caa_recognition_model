@@ -19,5 +19,12 @@ def multinom_loglike(x,n,p):
     return gammaln(n+1)-pl.sum(gammaln(x+1))+pl.sum(x*pl.log(p));
 
 def chi_square_gof(x,n,p):
+    """
+    where x is a k-length vector representing the number of observed events in
+    each category, n is a scalar representing the number of trials, and p is a
+    k-length vector representing the proportion parameter for each category
+    
+    returns the associated chi-squared statistic
+    """
     p = pl.clip(p,EPS,None);
     return sum((x-n*p)**2/(n*p));
