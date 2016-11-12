@@ -14,12 +14,6 @@ data_path = 'neha/data/'; # this is the base path for the data files
 # the reason to do this first is that, in order to be efficient,
 # we don't want to represent any more of the time axis than we have to.
 
-#rem_hit = numpy.loadtxt(data_path+'remRT_hit.txt'); # load remember RTs for hits
-#know_hit = numpy.loadtxt(data_path+'knowRT_hit.txt'); # load know RTs for hits
-#rem_fa = numpy.loadtxt(data_path+'remRT_fa.txt'); # load remember RTs for false alarms
-#know_fa = numpy.loadtxt(data_path+'knowRT_fa.txt');  # load know RTs for false alarms
-#CR = numpy.loadtxt(data_path+'CR.txt');  # load CR RTs 
-
 # Read in new Vincentized RT data
 db = shelve.open(data_path+'neha_data.dat','r');
 rem_hit = db['rem_hit'];
@@ -31,21 +25,13 @@ miss = db['miss'];
 db.close();
 
 
-
-## read in collapsed data 
-#remember_hit = numpy.loadtxt('data_collapsed/remRT_hit.txt'); # load remember RTs for hits
-#know_hit = numpy.loadtxt('data_collapsed/knowRT_hit.txt'); # load know RTs for hits
-#remember_fa = numpy.loadtxt('data_collapsed/remRT_fa.txt'); # load remember RTs for false alarms#
-#know_fa = numpy.loadtxt('data_collapsed/knowRT_fa.txt');  # load know RTs for false alarms
-#CR = numpy.loadtxt('data_collapsed/CR.txt');  # load CR RTs 
-#miss = numpy.loadtxt('data_collapsed/miss.txt');  # load miss RTs 
 INF_PROXY   = 10; # a value used to provide very large but finite bounds for mvn integration
 EPS         = 1e-10 # a very small value (used for numerical stability)
 NR_THREADS  = 1;    # this is for multithreaded fft
-DELTA_T     = 0.05;  # size of discrete time increment (sec.)
-MAX_T       = 24; #ceil(percentile(all_RT,99.5))
+DELTA_T     = 0.025;  # size of discrete time increment (sec.)
+MAX_T       = 8.0; #ceil(percentile(all_RT,99.5))
 NR_TSTEPS   = MAX_T/DELTA_T;
-NR_SSTEPS   = 4096; #8192#4096#2048;
+NR_SSTEPS   = 8192;
 NR_SAMPLES  = 10000; # number of trials to use for MC likelihood computation
 n = 2; # number of confidence critetion
 QUANT = array([0,0.25,0.50,0.75]);
@@ -226,9 +212,13 @@ def compute_model_gof(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_conf,n
     ## compute the number of RTs falling into each quantile bin
     rem_freqs = array([-diff([sum(rem_RTs[rem_conf==i]>q) for q in rem_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
     know_freqs = array([-diff([sum(know_RTs[know_conf==i]>q) for q in know_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
+    ## Added 11/11/2016 by Melchi
+    ## flip these frequencies so that they represent the frequencies in order of
+    ## descending confidence levels
+    rem_freqs = flipud(rem_freqs);
+    know_freqs = flipud(know_freqs);
     new_freqs = -diff([sum(new_RTs>q) for q in new_quantiles]+[0]);
     x = hstack([rem_freqs.flatten(),know_freqs.flatten(),new_freqs]);
-    
     # compute p, the probability associated with each category in the model
     p_rem = p_r[:,newaxis]*ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
     p_know = p_k[:,newaxis]*ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
@@ -361,7 +351,8 @@ def predicted_proportions_spm(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
     return p_old_conf,p_new,t;
 
 
-def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fftw=True):
+def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,
+                          t_offset=0,use_fftw=True):
     # make c (the confidence levels) an array in case it is a scalar value
     c = array(c,ndmin=1);
     n = len(c);
@@ -376,7 +367,8 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
     rho = sigma_r/sigma;
 
     t = linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
-    bound = exp(-tc_bound*t); # this is the collapsing bound
+    to_idx = argmin((t-t_offset)**2); # compute the index for t_offset
+    bound = exp(-tc_bound*clip(t-t_offset,0,None)); # this is the collapsing bound
      
     mu = (mu_r+mu_f)*DELTA_T; # this is the average overall drift rate, with r = 'recall' and f = 'familiar'
     # compute the bounding limit of the space domain. This should include at least 99% of the probability mass when the particle is at the largest possible bound
@@ -403,9 +395,9 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
     ############################################
     ## take care of the first timestep #########
     ############################################
-    tx[0] = stats.norm.pdf(x,mu+z0,sigma)*delta_s;
-    p_old[0] = sum(tx[0][x>=bound[0]]);
-    p_new[0] = sum(tx[0][x<=-bound[0]]);
+    tx[to_idx] = stats.norm.pdf(x,mu+z0,sigma)*delta_s;
+    p_old[to_idx] = sum(tx[to_idx][x>=bound[to_idx]]);
+    p_new[to_idx] = sum(tx[to_idx][x<=-bound[to_idx]]);
     # compute STD(r) for the current time
     s_r = sigma_r;
     s_f = sigma_f;
@@ -413,20 +405,20 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
     s_comb = sigma;
     # compute E[r|(r+f)]
     #mu_r_cond = mu_r*t[0]+rho*s_r*(bound[0]-t[0]*(mu_r+mu_f))/s_comb;
-    mu_r_cond = mu_r*t[0]+(bound[0]-t[0]*(mu_r+mu_f)-z0)*rho**2;
+    mu_r_cond = mu_r*t[to_idx]+(bound[to_idx]-t[to_idx]*(mu_r+mu_f)-z0)*rho**2;
     # compute STD[r|(r+f)]
     s_r_cond = s_r*sqrt(1-rho**2);
     s_f_cond = s_f*sqrt(1-(sigma_f/sigma)**2);
     
     # remove from consideration any particles that already hit the bound
-    tx[0]*=(abs(x)<bound[0]);
+    tx[to_idx]*=(abs(x)<bound[to_idx]);
     
     ############################################################################
     # compute the parameters of the bivariate distribution of particle locations
     # deltaT seconds after old/new decision
     
     mu_r_delta = mu_r_cond+mu_r*deltaT;
-    mu_comb_delta = (mu_r+mu_f)*deltaT+bound[0];
+    mu_comb_delta = (mu_r+mu_f)*deltaT+bound[to_idx];
     s2_r_delta = s_r_cond**2+2*d_r*deltaT;
     s2_f_delta = s_f_cond**2+2*d_f*deltaT;
     s2_comb_delta = s2_r_delta+s2_f_delta;
@@ -442,14 +434,14 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
         KUL = array([r_bound,clims[j-1]]);      # upper limit for 'know' class
         RLL = array([r_bound,clims[j]]);        # lower limit for 'remember' class
         RUL = array([INF_PROXY,clims[j-1]]);    # upper limit for 'remember' class
-        p_know_conf[j-1,0] = p_old[0]*stats.mvn.mvnun(KLL,KUL,mu_mvn,sigma_mvn)[0];
-        p_rem_conf[j-1,0] = p_old[0]*stats.mvn.mvnun(RLL,RUL,mu_mvn,sigma_mvn)[0];
+        p_know_conf[j-1,to_idx] = p_old[to_idx]*stats.mvn.mvnun(KLL,KUL,mu_mvn,sigma_mvn)[0];
+        p_rem_conf[j-1,to_idx] = p_old[to_idx]*stats.mvn.mvnun(RLL,RUL,mu_mvn,sigma_mvn)[0];
         
     #######################################
     ## take care of subsequent timesteps ##
     #######################################
     
-    for i in range(1,len(t)):
+    for i in range(to_idx+1,len(t)):
         #tx[i] = convolve(tx[i-1],kernel,'same');
         # convolve the particle distribution from the previous timestep
         # with the diffusion kernel (using Fourier domain convolution)
@@ -529,7 +521,7 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fft
     return p_rem_conf,p_know_conf,p_new,t;
 
 #def predicted_proportions_sim(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0):
-def predicted_proportions_sim(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT):
+def predicted_proportions_sim(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,t_offset=0):
     # make c (the confidence levels) an array in case it is a scalar value
     c = array(c,ndmin=1);
     n = len(c);
@@ -541,7 +533,8 @@ def predicted_proportions_sim(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT):
     sigma = sqrt(sigma_r**2+sigma_f**2);
     
     t = linspace(DELTA_T,MAX_T,NR_TSTEPS);
-    bound = exp(-tc_bound*t); # this is the collapsing bound
+    to_idx = argmin((t-t_offset)**2); # compute the index for t_offset
+    bound = exp(-tc_bound*clip(t-t_offset,0,None)); # this is the collapsing bound
 
     # Now simulate NR_SAMPLES trials
     # 1. Generate a random position change for each time interval
@@ -550,6 +543,8 @@ def predicted_proportions_sim(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT):
 
     delta_r = stats.norm.rvs(mu_r*DELTA_T,sigma_r,size=(NR_SAMPLES,NR_TSTEPS));
     delta_f = stats.norm.rvs(mu_f*DELTA_T,sigma_f,size=(NR_SAMPLES,NR_TSTEPS));
+    delta_r[:to_idx] = 0;
+    delta_f[:to_idx] = 0;
     delta_pos = delta_r+delta_f;
 
     # 2. Use cumsum to compute absolute positions from delta_pos

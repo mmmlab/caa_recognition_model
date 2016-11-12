@@ -192,7 +192,7 @@ def predicted_proportions(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0,use_fftw=True
     ## take care of the first timestep #########
     ############################################
     tx[to_idx] = stats.norm.pdf(x,mu+z0,sigma)*delta_s;
-    p_old[to_idx] = pl.sum(tx[0][x>=bound[to_idx]]);
+    p_old[to_idx] = pl.sum(tx[to_idx][x>=bound[to_idx]]);
     p_new[to_idx] = pl.sum(tx[to_idx][x<=-bound[to_idx]]);
     # remove from consideration any particles that already hit the bound
     tx[to_idx]*=(abs(x)<bound[to_idx]);
