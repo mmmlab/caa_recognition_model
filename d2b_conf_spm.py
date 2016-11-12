@@ -45,7 +45,7 @@ fftw.fftw_setup(pl.zeros(NR_SSTEPS),NR_THREADS);
 # version with single diffusion parameter and lowest confidence bound fixed at zero
 params_est_old = [0.9169,0.319,0.3888,-0.265,0.0505,-0.1198,0.4968,0.5799]; # fitted w/ 10 quantiles, chisq = 606
 params_est = [0.9452,0.3236,0.4126,-0.2745,0.0486,-0.124,0.5001,0.5527]; # fitted w/ 10 quantiles, chisq = 440
-param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0),(0,0.3)];
+param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0),(0,0.5)];
 
 
 def find_ml_params_all(quantiles=NR_QUANTILES,nr_conf_bounds=2):
