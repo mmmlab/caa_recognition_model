@@ -43,7 +43,9 @@ NR_QUANTILES=10;
 
 fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
 
-params_est = [(0.7233685,0.08959858),0.50357936,0.96055488,0.29500501,0.00464397,1.0,0.67084697,-0.74701904,0.22969753];
+#c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0, mu_r0,mu_f0,deltaT,t_offset = model_params;
+params_est = [0.977,0.002,0.301,0.004,0.374,0.059,0.001,-0.13, -0.014,-0.242,0.584,0.496];
+# new params fitted using 10 quantiles: chisq = 860
 
 param_bounds = [(0.0,1.0),(-2.0,2.0),(-2.0,2.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),\
                 (0.0,1.0),(-1.0,1.0),(-2.0,2.0),(-2.0,2.0),(EPS,2.0),(0,0.5)];
