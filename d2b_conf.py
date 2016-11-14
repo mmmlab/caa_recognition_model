@@ -77,7 +77,7 @@ def compute_gof_all(model_params,quantiles=NR_QUANTILES):
     of responses to both the old and new words.
     """
     # unpack the model parameters
-    c,mu_old,d,mu_new,tc_bound,z0,deltaT,t_offset = model_params;
+    #c,mu_old,d,mu_new,tc_bound,z0,deltaT,t_offset = model_params;
     
     c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,mu_r0,mu_f0,deltaT,t_offset = model_params;
     params_est_old = [[c,0],mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,t_offset];
