@@ -43,6 +43,7 @@ fftw.fftw_setup(pl.zeros(NR_SSTEPS),NR_THREADS);
 
 # previously fitted parameters and bounds
 # version with single diffusion parameter and lowest confidence bound fixed at zero
+# c,mu_old,d,mu_new,tc_bound,z0,deltaT,t_offset = model_params
 params_est_old = [0.9169,0.319,0.3888,-0.265,0.0505,-0.1198,0.4968,0.5799]; # fitted w/ 10 quantiles, chisq = 606
 params_est = [0.9452,0.3236,0.4126,-0.2745,0.0486,-0.124,0.5001,0.5527]; # fitted w/ 10 quantiles, chisq = 440
 param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0),(0,0.5)];
@@ -67,7 +68,7 @@ def find_ml_params_all_lm(quantiles=NR_QUANTILES,nr_conf_bounds=2):
     # computes mle of params using a local (fast) optimization algorithm
     return optimize.fmin(compute_gof_all,params_est)
 
-def compute_gof_all(model_params,quantiles=NR_QUANTILES):
+def compute_gof_all(model_params,quantiles=NR_QUANTILES,remknow=False):
     """
     computes the overall goodness-of-fit of the model defined by model_params.
     This is the sum of the NLL or chi-square statistics for the distribution
@@ -79,12 +80,20 @@ def compute_gof_all(model_params,quantiles=NR_QUANTILES):
     # and new words (lures)
     params_est_old = [[c,0],mu_old,d,tc_bound,z0,deltaT,t_offset];
     params_est_new = [[c,0],mu_new,d,tc_bound,z0,deltaT,t_offset];
-    # for the single-process model, concatenate the remember and know responses
-    old_data = [pl.hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],pl.hstack([rem_hit[:,1],know_hit[:,1]])];
-    new_data = [pl.hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],pl.hstack([rem_fa[:,1],know_fa[:,1]])];
-    # compute the combined goodness-of-fit
-    res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
-    compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
+    if(remknow):
+        # computes gof using separate distributions for remember vs. know.
+        old_data = [rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1]];
+        new_data = [rem_fa[:,0],know_fa[:,0],CR[:,0],rem_fa[:,1],know_fa[:,1]];
+        # compute the combined goodness-of-fit
+        res = compute_model_gof_rk(params_est_old,*old_data,nr_quantiles=quantiles)+ \
+        compute_model_gof_rk(params_est_new,*new_data,nr_quantiles=quantiles);
+    else:
+        # computes gof using concatenated remember and know responses
+        old_data = [pl.hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],pl.hstack([rem_hit[:,1],know_hit[:,1]])];
+        new_data = [pl.hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],pl.hstack([rem_fa[:,1],know_fa[:,1]])];
+        # compute the combined goodness-of-fit
+        res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
+        compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
     return res;
 
 def compute_model_gof(model_params,old_RTs,new_RTs,old_conf,nr_quantiles,use_chisq=True):
@@ -117,6 +126,50 @@ def compute_model_gof(model_params,old_RTs,new_RTs,old_conf,nr_quantiles,use_chi
     p_o = p_o[:,None]*pl.ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
     p_new = p_n*pl.ones(nr_quantiles)/float(nr_quantiles);
     p = pl.hstack([p_o.flatten(),p_new]);
+    if(use_chisq):
+        return chi_square_gof(x,N,p);
+    else: # use NLL
+        return -multinom_loglike(x,N,p);
+    
+def compute_model_gof_rk(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_conf,nr_quantiles,use_chisq=True):
+    """
+    computes the goodness-of-fit of the model defined by model_params to the
+    observed data for one of the word categories (remember, know, or new).
+    
+    use_chisq is a flag indicating whether to use the chi-square statistic or
+    the negative log-likelihood to quantify the goodness-of-fit.
+    """
+    # computes the chi square fit of the model to the data
+    # compute N, the total number of trials
+    N = len(rem_RTs)+len(know_RTs)+len(new_RTs);
+    # compute the empirical probabilities of choosing rem vs. know given an old judgment
+    p_rem_e = float(len(rem_RTs))/(len(rem_RTs)+len(know_RTs));
+    p_know_e = 1-p_rem_e;
+
+    # compute x, the observed frequency for each category
+    old_quantiles,new_quantiles,p_o,p_n = compute_model_quantiles(model_params,nr_quantiles);
+    # determine the number of confidence levels being used in the model
+    nr_conf_levels = len(old_quantiles);
+    # adjust the number of confidence levels in the data to match
+    rem_conf = pl.clip(rem_conf,0,nr_conf_levels-1);
+    know_conf = pl.clip(know_conf,0,nr_conf_levels-1);
+    ## compute the number of RTs falling into each quantile bin
+    rem_freqs = pl.array([-pl.diff([pl.sum(rem_RTs[rem_conf==i]>q) for q in old_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
+    know_freqs = pl.array([-pl.diff([pl.sum(know_RTs[know_conf==i]>q) for q in old_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
+    ## I think this is where the problem was. The confidence levels in the
+    ## model are in descending order, while these (for the empircal data) are
+    ## in ascending order. I'll flip them here
+    rem_freqs = pl.flipud(rem_freqs);
+    know_freqs = pl.flipud(know_freqs);
+    new_freqs = -pl.diff([pl.sum(new_RTs>q) for q in new_quantiles]+[0]);
+    x = pl.hstack([rem_freqs.flatten(),know_freqs.flatten(),new_freqs]);
+    
+    # compute p, the probability associated with each category in the model
+    p_old = p_o[:,None]*pl.ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
+    p_rem = p_old*p_rem_e;
+    p_know = p_old*p_know_e;
+    p_new = p_n*pl.ones(nr_quantiles)/float(nr_quantiles);
+    p = pl.hstack([p_rem.flatten(),p_know.flatten(),p_new]);
     if(use_chisq):
         return chi_square_gof(x,N,p);
     else: # use NLL
