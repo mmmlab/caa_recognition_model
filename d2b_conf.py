@@ -33,21 +33,19 @@ MAX_T       = 8.0; #ceil(percentile(all_RT,99.5))
 NR_TSTEPS   = MAX_T/DELTA_T;
 NR_SSTEPS   = 8192;
 NR_SAMPLES  = 10000; # number of trials to use for MC likelihood computation
-n = 2; # number of confidence critetion
-QUANT = array([0,0.25,0.50,0.75]);
-QUANT_DIFF = 0.25;
-NR_QUANTILES = 4;
-R = 0.1; D = 0.05; L = 0.1; Z = 0.0;
 
 NR_QUANTILES=10;
 
 fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
 
 #c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0, mu_r0,mu_f0,deltaT,t_offset = model_params;
-params_est = [0.977,0.002,0.301,0.004,0.374,0.059,0.001,-0.13, -0.014,-0.242,0.584,0.496];
-# new params fitted using 10 quantiles: chisq = 860
+params_est = [0.9984,0.002,0.3035,0.0037,0.3736,0.0585,0.001,-0.1306,-0.0142,-0.2438,0.5859,0.5126];
+# new params fitted using 10 quantiles: chisq = 794
 # parameters taken from single-process model
-params_est_spm = [0.9452,0.0,0.3236,EPS,0.4126,0.0486,0,-0.124,0.0,-0.2745,0.5001,0.5527];
+#params_est_spm = [0.9452,0.0,0.3236,EPS,0.4126,0.0486,0,-0.124,0.0,-0.2745,0.5001,0.5527];
+
+params_est_spm = [1.0,0.3103,0.4169,-0.269,0.0458,-0.1284,0.5223,0.5656,0.0];
+# parameters fit using spm submodel w/ 10 quantiles. chisq = 828
 
 param_bounds = [(0.0,1.0),(-2.0,2.0),(-2.0,2.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),\
                 (0.0,1.0),(-1.0,1.0),(-2.0,2.0),(-2.0,2.0),(EPS,2.0),(0,0.5)];
@@ -63,18 +61,21 @@ def find_ml_params_all(quantiles=NR_QUANTILES):
     obj_func = lambda x:compute_gof_all(x,quantiles);
     return optimize.differential_evolution(obj_func,param_bounds);
 
-def find_ml_params_all_lm(quantiles=NR_QUANTILES):
+def find_ml_params_all_lm(quantiles=NR_QUANTILES,spm=False):
     """
     computes MLE of params using a local (fast) and unconstrained optimization
     algorithm. Each RT distribution (i.e., for each judgment category and
     confidence level) is represented using the number of quantiles specified by
     the 'quantiles' parameter.
     """
-    obj_func = lambda x:compute_gof_all(x,quantiles);
+    obj_func = lambda x:compute_gof_all(x,quantiles,spm);
     # computes mle of params using a local (fast) optimization algorithm
-    return optimize.fmin(obj_func,params_est);
+    if(spm):
+        return optimize.fmin(obj_func,params_est_spm);
+    else:
+        return optimize.fmin(obj_func,params_est);
 
-def compute_gof_all(model_params,quantiles=NR_QUANTILES):
+def compute_gof_all(model_params,quantiles=NR_QUANTILES,spm=False):
     """
     computes the overall goodness-of-fit of the model defined by model_params.
     This is the sum of the NLL or chi-square statistics for the distribution
@@ -82,8 +83,12 @@ def compute_gof_all(model_params,quantiles=NR_QUANTILES):
     """
     # unpack the model parameters
     #c,mu_old,d,mu_new,tc_bound,z0,deltaT,t_offset = model_params;
-    
-    c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,mu_r0,mu_f0,deltaT,t_offset = model_params;
+    if(spm):
+        c,mu_f,d_f,mu_f0,tc_bound,z0,deltaT,t_offset,r_bound = model_params;
+        mu_r = mu_r0 = 0;
+        d_r = EPS;
+    else:
+        c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,mu_r0,mu_f0,deltaT,t_offset = model_params;
     params_est_old = [[c,0],mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,t_offset];
     params_est_new = [[c,0],mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT,t_offset];
     old_data = [rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1]];

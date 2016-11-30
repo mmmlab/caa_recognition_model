@@ -44,8 +44,9 @@ fftw.fftw_setup(pl.zeros(NR_SSTEPS),NR_THREADS);
 # previously fitted parameters and bounds
 # version with single diffusion parameter and lowest confidence bound fixed at zero
 # c,mu_old,d,mu_new,tc_bound,z0,deltaT,t_offset = model_params
-params_est_old = [0.9169,0.319,0.3888,-0.265,0.0505,-0.1198,0.4968,0.5799]; # fitted w/ 10 quantiles, chisq = 606
-params_est = [0.9452,0.3236,0.4126,-0.2745,0.0486,-0.124,0.5001,0.5527]; # fitted w/ 10 quantiles, chisq = 440
+params_est_old = [0.9478,0.3213,0.4163,-0.2832,0.047,-0.1273,0.4787,0.5894]; # fitted w/ 10 quantiles, chisq = 601
+params_est = [ 0.9703,0.3282,0.4126,-0.2719,0.0471,-0.1242,0.5034,0.5692]; # fitted w/ 10 quantiles and remember/know categories, chisq = 760
+
 param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0),(0,0.5)];
 
 
@@ -68,7 +69,7 @@ def find_ml_params_all_lm(quantiles=NR_QUANTILES,nr_conf_bounds=2):
     # computes mle of params using a local (fast) optimization algorithm
     return optimize.fmin(compute_gof_all,params_est)
 
-def compute_gof_all(model_params,quantiles=NR_QUANTILES,remknow=False):
+def compute_gof_all(model_params,quantiles=NR_QUANTILES,remknow=True):
     """
     computes the overall goodness-of-fit of the model defined by model_params.
     This is the sum of the NLL or chi-square statistics for the distribution
