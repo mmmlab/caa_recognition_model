@@ -1,5 +1,5 @@
 import shelve
-from pylab import *
+#from pylab import *
 import pylab as pl
 import numpy
 from scipy import stats
@@ -36,7 +36,7 @@ NR_SAMPLES  = 10000; # number of trials to use for MC likelihood computation
 
 NR_QUANTILES=10;
 
-fftw.fftw_setup(zeros(NR_SSTEPS),NR_THREADS);
+fftw.fftw_setup(pl.zeros(NR_SSTEPS),NR_THREADS);
 
 #c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0, mu_r0,mu_f0,deltaT,t_offset = model_params;
 params_est = [0.9984,0.002,0.3035,0.0037,0.3736,0.0585,0.001,-0.1306,-0.0142,-0.2438,0.5859,0.5126];
@@ -123,29 +123,29 @@ def compute_model_gof(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_conf,n
     # determine the number of confidence levels being used in the model
     nr_conf_levels = len(rem_quantiles);
     # adjust the number of confidence levels in the data to match
-    rem_conf = clip(rem_conf,0,nr_conf_levels-1);
-    know_conf = clip(know_conf,0,nr_conf_levels-1);
+    rem_conf = pl.clip(rem_conf,0,nr_conf_levels-1);
+    know_conf = pl.clip(know_conf,0,nr_conf_levels-1);
     ## compute the number of RTs falling into each quantile bin
-    rem_freqs = array([-diff([sum(rem_RTs[rem_conf==i]>q) for q in rem_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
-    know_freqs = array([-diff([sum(know_RTs[know_conf==i]>q) for q in know_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
+    rem_freqs = pl.array([-pl.diff([pl.sum(rem_RTs[rem_conf==i]>q) for q in rem_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
+    know_freqs = pl.array([-pl.diff([pl.sum(know_RTs[know_conf==i]>q) for q in know_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
     ## Added 11/11/2016 by Melchi
     ## flip these frequencies so that they represent the frequencies in order of
     ## descending confidence levels
-    rem_freqs = flipud(rem_freqs);
-    know_freqs = flipud(know_freqs);
-    new_freqs = -diff([sum(new_RTs>q) for q in new_quantiles]+[0]);
-    x = hstack([rem_freqs.flatten(),know_freqs.flatten(),new_freqs]);
+    rem_freqs = pl.flipud(rem_freqs);
+    know_freqs = pl.flipud(know_freqs);
+    new_freqs = -pl.diff([pl.sum(new_RTs>q) for q in new_quantiles]+[0]);
+    x = pl.hstack([rem_freqs.flatten(),know_freqs.flatten(),new_freqs]);
     # compute p, the probability associated with each category in the model
-    p_rem = p_r[:,newaxis]*ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
-    p_know = p_k[:,newaxis]*ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
-    p_new = p_n*ones(nr_quantiles)/float(nr_quantiles);
-    p = hstack([p_rem.flatten(),p_know.flatten(),p_new]);
+    p_rem = p_r[:,None]*pl.ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
+    p_know = p_k[:,None]*pl.ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
+    p_new = p_n*pl.ones(nr_quantiles)/float(nr_quantiles);
+    p = pl.hstack([p_rem.flatten(),p_know.flatten(),p_new]);
     return chi_square_gof(x,N,p)
 
 def compute_model_quantiles(params,nr_quantiles=NR_QUANTILES):
     # This function is set up to deal with multiple confidence levels
     quantile_increment = 1.0/nr_quantiles;
-    quantiles = arange(0,1,quantile_increment);
+    quantiles = pl.arange(0,1,quantile_increment);
     # compute marginal distributions
     p_remember,p_know,p_new,t = predicted_proportions(*params);
     # compute marginal category proportions (per confidence level)
@@ -153,19 +153,19 @@ def compute_model_quantiles(params,nr_quantiles=NR_QUANTILES):
     know_total = p_know.sum(-1)+EPS;
     new_total = p_new.sum()+EPS;
     # compute integrals of marginal distributions
-    P_r = cumsum(p_remember,-1)/remember_total[:,newaxis];
-    P_k = cumsum(p_know,-1)/know_total[:,newaxis];
-    P_n = cumsum(p_new)/new_total;
+    P_r = pl.cumsum(p_remember,-1)/remember_total[:,None];
+    P_k = pl.cumsum(p_know,-1)/know_total[:,None];
+    P_n = pl.cumsum(p_new)/new_total;
     
     # compute RT quantiles (by confidence level for know and rem judgments)
-    rem_quantiles = array([t[argmax(P_r>q,-1)] for q in quantiles]).T;
-    know_quantiles = array([t[argmax(P_k>q,-1)] for q in quantiles]).T;
-    new_quantiles = array([t[argmax(P_n>q)] for q in quantiles]);
+    rem_quantiles = pl.array([t[pl.argmax(P_r>q,-1)] for q in quantiles]).T;
+    know_quantiles = pl.array([t[pl.argmax(P_k>q,-1)] for q in quantiles]).T;
+    new_quantiles = pl.array([t[pl.argmax(P_n>q)] for q in quantiles]);
     rem_quantiles[:,0] = 0;
     know_quantiles[:,0] = 0;
     new_quantiles[0] = 0;
     # return quantile locations and marginal p(new)
-    return rem_quantiles,know_quantiles,new_quantiles,sum(p_remember,1),sum(p_know,1),sum(p_new);
+    return rem_quantiles,know_quantiles,new_quantiles,pl.sum(p_remember,1),pl.sum(p_know,1),pl.sum(p_new);
 
 
 # (10/06/2016) This is the new version of the function, which implements the
@@ -175,16 +175,16 @@ def compute_model_quantiles(params,nr_quantiles=NR_QUANTILES):
 
 def predicted_proportions_spm(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
     # make c (the confidence levels) an array in case it is a scalar value
-    c = array(c,ndmin=1);
+    c = pl.array(c,ndmin=1);
     n = len(c);
     # form an array consisting of the appropriate (upper) integration limits
-    clims = hstack(([INF_PROXY],c,[-INF_PROXY]));
+    clims = pl.hstack(([INF_PROXY],c,[-INF_PROXY]));
     # compute process SD
-    sigma_f = sqrt(2*d_f*DELTA_T);
+    sigma_f = pl.sqrt(2*d_f*DELTA_T);
     sigma = sigma_f;
 
-    t = linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
-    bound = exp(-tc_bound*t); # this is the collapsing bound
+    t = pl.linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
+    bound = pl.exp(-tc_bound*t); # this is the collapsing bound
      
     mu = mu_f*DELTA_T; # this is the expected drift over time interval DELTA_T
     # compute the bounding limit of the space domain. This should include at
@@ -192,27 +192,27 @@ def predicted_proportions_spm(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
     space_lim = max(bound)+3*sigma;
     delta_s = 2*space_lim/NR_SSTEPS;
     # finally, construct the space axis
-    x = linspace(-space_lim,space_lim,NR_SSTEPS);
+    x = pl.linspace(-space_lim,space_lim,NR_SSTEPS);
     # compute the diffusion kernel
     kernel = stats.norm.pdf(x,mu,sigma)*delta_s;
     # ... and its Fourier transform. We'll use this to compute FD convolutions
     if(use_fftw):
         ft_kernel = fftw.fft(kernel);
     else:
-        ft_kernel = fft(kernel);
-    tx = zeros((len(t),len(x)));
+        ft_kernel = pl.fft(kernel);
+    tx = pl.zeros((len(t),len(x)));
     
     # Construct arrays to hold RT distributions
-    p_old = zeros(shape(t));
-    p_new = zeros(shape(t));
-    p_old_conf = zeros((n+1,size(t)));  
+    p_old = pl.zeros(pl.shape(t));
+    p_new = pl.zeros(pl.shape(t));
+    p_old_conf = pl.zeros((n+1,size(t)));  
     
     ############################################
     ## take care of the first timestep #########
     ############################################
     tx[0] = stats.norm.pdf(x,mu+z0,sigma)*delta_s;
-    p_old[0] = sum(tx[0][x>=bound[0]]);
-    p_new[0] = sum(tx[0][x<=-bound[0]]);
+    p_old[0] = pl.sum(tx[0][x>=bound[0]]);
+    p_new[0] = pl.sum(tx[0][x<=-bound[0]]);
     
     # remove from consideration any particles that already hit the bound
     tx[0]*=(abs(x)<bound[0]);
@@ -221,14 +221,14 @@ def predicted_proportions_spm(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
     # compute the parameters for the distribution of particle locations
     # deltaT seconds after old/new decision
     mu_delta = mu_f*deltaT+bound[0];
-    s_delta = sqrt(2*d_f*deltaT);
+    s_delta = pl.sqrt(2*d_f*deltaT);
     
     # compute the probability that the particle falls within the region for
     # each category. Note that now the particle's trajectory is 1D, so that
     # the only thing that determines the region is the bounding interval,
     # specified in terms of f
     for j in range(1,len(clims)):
-        p_old_conf[j-1,0] = p_old[0]*diff(stats.norm.cdf([clims[j],clims[j-1]],mu_delta,s_delta));
+        p_old_conf[j-1,0] = p_old[0]*pl.diff(stats.norm.cdf([clims[j],clims[j-1]],mu_delta,s_delta));
         
     #######################################
     ## take care of subsequent timesteps ##
@@ -238,19 +238,19 @@ def predicted_proportions_spm(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
         # convolve the particle distribution from the previous timestep
         # with the diffusion kernel (using Fourier domain convolution)
         if(use_fftw):
-            tx[i] = abs(ifftshift(fftw.ifft(fftw.fft(tx[i-1])*ft_kernel)));
+            tx[i] = abs(pl.ifftshift(fftw.ifft(fftw.fft(tx[i-1])*ft_kernel)));
         else:
-            tx[i] = abs(ifftshift(ifft(fft(tx[i-1])*ft_kernel)));
+            tx[i] = abs(pl.ifftshift(pl.ifft(pl.fft(tx[i-1])*ft_kernel)));
 
         p_pos = tx[i][x>=bound[i]]; # probability of each particle position above the upper bound
         x_pos = x[x>=bound[i]];     # location of each particle position above the upper bound
         
         # compute the expected value of a particle that just exceeded the bound
         # during the last time interval
-        comb_est = (dot(p_pos,x_pos)+EPS)/(sum(p_pos)+EPS); 
+        comb_est = (pl.dot(p_pos,x_pos)+EPS)/(pl.sum(p_pos)+EPS); 
 
-        p_old[i] = sum(p_pos); # total probability that particle crosses upper bound
-        p_new[i] = sum(tx[i][x<=-bound[i]]); # probability that particle crosses lower bound
+        p_old[i] = pl.sum(p_pos); # total probability that particle crosses upper bound
+        p_new[i] = pl.sum(tx[i][x<=-bound[i]]); # probability that particle crosses lower bound
         
                # remove from consideration any particles that already hit the bound
         tx[i]*=(abs(x)<bound[i]);
@@ -258,60 +258,60 @@ def predicted_proportions_spm(c,mu_f,d_f,tc_bound,z0,deltaT,use_fftw=True):
         # compute the parameters for the distribution of particle locations
         # deltaT seconds after old/new decision
         mu_delta = mu_f*deltaT+bound[i];
-        s_delta = sqrt(2*d_f*deltaT);
+        s_delta = pl.sqrt(2*d_f*deltaT);
         
         for j in range(1,len(clims)):
-            p_old_conf[j-1,i] = p_old[i]*diff(stats.norm.cdf([clims[j],clims[j-1]],mu_delta,s_delta));
+            p_old_conf[j-1,i] = p_old[i]*pl.diff(stats.norm.cdf([clims[j],clims[j-1]],mu_delta,s_delta));
     return p_old_conf,p_new,t;
 
 
 def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,
                           t_offset=0,use_fftw=True):
     # make c (the confidence levels) an array in case it is a scalar value
-    c = array(c,ndmin=1);
+    c = pl.array(c,ndmin=1);
     n = len(c);
     # form an array consisting of the appropriate (upper) integration limits
-    clims = hstack(([INF_PROXY],c,[-INF_PROXY]));
+    clims = pl.hstack(([INF_PROXY],c,[-INF_PROXY]));
     # compute process SD
-    sigma_r = sqrt(2*d_r*DELTA_T);
-    sigma_f = sqrt(2*d_f*DELTA_T);
-    sigma = sqrt(sigma_r**2+sigma_f**2);
+    sigma_r = pl.sqrt(2*d_r*DELTA_T);
+    sigma_f = pl.sqrt(2*d_f*DELTA_T);
+    sigma = pl.sqrt(sigma_r**2+sigma_f**2);
 
     # compute the correlation for r given r+f
     rho = sigma_r/sigma;
 
-    t = linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
-    to_idx = argmin((t-t_offset)**2); # compute the index for t_offset
-    bound = exp(-tc_bound*clip(t-t_offset,0,None)); # this is the collapsing bound
+    t = pl.linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
+    to_idx = pl.argmin((t-t_offset)**2); # compute the index for t_offset
+    bound = pl.exp(-tc_bound*pl.clip(t-t_offset,0,None)); # this is the collapsing bound
      
     mu = (mu_r+mu_f)*DELTA_T; # this is the average overall drift rate, with r = 'recall' and f = 'familiar'
     # compute the bounding limit of the space domain. This should include at least 99% of the probability mass when the particle is at the largest possible bound
     space_lim = max(bound)+3*sigma;
     delta_s = 2*space_lim/NR_SSTEPS;
     # finally, construct the space axis
-    x = linspace(-space_lim,space_lim,NR_SSTEPS);
+    x = pl.linspace(-space_lim,space_lim,NR_SSTEPS);
     # compute the diffusion kernel
     kernel = stats.norm.pdf(x,mu,sigma)*delta_s;
     # ... and its Fourier transform. We'll use this to compute FD convolutions
     if(use_fftw):
         ft_kernel = fftw.fft(kernel);
     else:
-        ft_kernel = fft(kernel);
-    tx = zeros((len(t),len(x)));
+        ft_kernel = pl.fft(kernel);
+    tx = pl.zeros((len(t),len(x)));
     
     # Construct arrays to hold RT distributions
-    p_old = zeros(shape(t));
-    p_new = zeros(shape(t));
-    p_rem_conf = zeros((n+1,size(t))); 
-    p_know_conf = zeros((n+1,size(t)));
+    p_old = pl.zeros(pl.shape(t));
+    p_new = pl.zeros(pl.shape(t));
+    p_rem_conf = pl.zeros((n+1,pl.size(t))); 
+    p_know_conf = pl.zeros((n+1,pl.size(t)));
     
     
     ############################################
     ## take care of the first timestep #########
     ############################################
     tx[to_idx] = stats.norm.pdf(x,mu+z0,sigma)*delta_s;
-    p_old[to_idx] = sum(tx[to_idx][x>=bound[to_idx]]);
-    p_new[to_idx] = sum(tx[to_idx][x<=-bound[to_idx]]);
+    p_old[to_idx] = pl.sum(tx[to_idx][x>=bound[to_idx]]);
+    p_new[to_idx] = pl.sum(tx[to_idx][x<=-bound[to_idx]]);
     # compute STD(r) for the current time
     s_r = sigma_r;
     s_f = sigma_f;
@@ -321,8 +321,8 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,
     #mu_r_cond = mu_r*t[0]+rho*s_r*(bound[0]-t[0]*(mu_r+mu_f))/s_comb;
     mu_r_cond = mu_r*t[to_idx]+(bound[to_idx]-t[to_idx]*(mu_r+mu_f)-z0)*rho**2;
     # compute STD[r|(r+f)]
-    s_r_cond = s_r*sqrt(1-rho**2);
-    s_f_cond = s_f*sqrt(1-(sigma_f/sigma)**2);
+    s_r_cond = s_r*pl.sqrt(1-rho**2);
+    s_f_cond = s_f*pl.sqrt(1-(sigma_f/sigma)**2);
     
     # remove from consideration any particles that already hit the bound
     tx[to_idx]*=(abs(x)<bound[to_idx]);
@@ -339,15 +339,15 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,
     #s2_comb_delta = 2*deltaT*(d_r+d_f);
     #s2_comb_delta = s_r_cond**2+s_f_cond**2+2*deltaT*(d_r+d_f);
     cov_delta = s2_r_delta;
-    mu_mvn = array([mu_r_delta,mu_comb_delta]);
-    sigma_mvn = array([[s2_r_delta,cov_delta],[cov_delta,s2_comb_delta]]);
+    mu_mvn = pl.array([mu_r_delta,mu_comb_delta]);
+    sigma_mvn = pl.array([[s2_r_delta,cov_delta],[cov_delta,s2_comb_delta]]);
     ############################################################################
     for j in range(1,len(clims)):
         # Note that the clims appear in descending order, from highest to lowest value
-        KLL = array([-INF_PROXY,clims[j]]);     # lower limit for 'know' class
-        KUL = array([r_bound,clims[j-1]]);      # upper limit for 'know' class
-        RLL = array([r_bound,clims[j]]);        # lower limit for 'remember' class
-        RUL = array([INF_PROXY,clims[j-1]]);    # upper limit for 'remember' class
+        KLL = pl.array([-INF_PROXY,clims[j]]);     # lower limit for 'know' class
+        KUL = pl.array([r_bound,clims[j-1]]);      # upper limit for 'know' class
+        RLL = pl.array([r_bound,clims[j]]);        # lower limit for 'remember' class
+        RUL = pl.array([INF_PROXY,clims[j-1]]);    # upper limit for 'remember' class
         p_know_conf[j-1,to_idx] = p_old[to_idx]*stats.mvn.mvnun(KLL,KUL,mu_mvn,sigma_mvn)[0];
         p_rem_conf[j-1,to_idx] = p_old[to_idx]*stats.mvn.mvnun(RLL,RUL,mu_mvn,sigma_mvn)[0];
         
@@ -360,26 +360,26 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,
         # convolve the particle distribution from the previous timestep
         # with the diffusion kernel (using Fourier domain convolution)
         if(use_fftw):
-            tx[i] = abs(ifftshift(fftw.ifft(fftw.fft(tx[i-1])*ft_kernel)));
+            tx[i] = abs(pl.ifftshift(fftw.ifft(fftw.fft(tx[i-1])*ft_kernel)));
         else:
-            tx[i] = abs(ifftshift(ifft(fft(tx[i-1])*ft_kernel)));
+            tx[i] = abs(pl.ifftshift(pl.ifft(pl.fft(tx[i-1])*ft_kernel)));
 
         p_pos = tx[i][x>=bound[i]]; # probability of each particle position above the upper bound
         x_pos = x[x>=bound[i]];     # location of each particle position above the upper bound
         
         # compute the expected value of a particle that just exceeded the bound
         # during the last time interval
-        comb_est = (dot(p_pos,x_pos)+EPS)/(sum(p_pos)+EPS); 
+        comb_est = (pl.dot(p_pos,x_pos)+EPS)/(pl.sum(p_pos)+EPS); 
 
-        p_old[i] = sum(p_pos); # total probability that particle crosses upper bound
-        p_new[i] = sum(tx[i][x<=-bound[i]]); # probability that particle crosses lower bound
+        p_old[i] = pl.sum(p_pos); # total probability that particle crosses upper bound
+        p_new[i] = pl.sum(tx[i][x<=-bound[i]]); # probability that particle crosses lower bound
         
         # compute STD(r) for the current time
-        s_r = sqrt(2*d_r*t[i]);
-        s_f = sqrt(2*d_f*t[i]);
+        s_r = pl.sqrt(2*d_r*t[i]);
+        s_f = pl.sqrt(2*d_f*t[i]);
         # compute STD[r|(r+f)]
-        s_r_cond = s_r*sqrt(1-rho**2);
-        s_f_cond = s_f*sqrt(1-(sigma_f/sigma)**2);
+        s_r_cond = s_r*pl.sqrt(1-rho**2);
+        s_f_cond = s_f*pl.sqrt(1-(sigma_f/sigma)**2);
         # compute E[r|(r+f)]
         mu_r_cond = mu_r*t[i]+(comb_est-t[i]*(mu_r+mu_f)-z0)*rho**2;
         # remove from consideration any particles that already hit the bound
@@ -405,15 +405,15 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,
         #s2_comb_delta = 2*deltaT*(d_r+d_f);
         #s2_comb_delta = s_r_cond**2+s_f_cond**2+2*deltaT*(d_r+d_f);
         cov_delta = s2_r_delta;
-        mu_mvn = array([mu_r_delta,mu_comb_delta]);
-        sigma_mvn = array([[s2_r_delta,cov_delta],[cov_delta,s2_comb_delta]]);
+        mu_mvn = pl.array([mu_r_delta,mu_comb_delta]);
+        sigma_mvn = pl.array([[s2_r_delta,cov_delta],[cov_delta,s2_comb_delta]]);
         ########################################################################
         # Test Code:
         #if(t[i]>0.5):
             #slim = 3.0;
             #xaxis = linspace(-slim,slim,200);
-            #xsup,ysup = meshgrid(xaxis,flipud(xaxis));
-            #supp = vstack([xsup.flatten(),ysup.flatten()]).T;
+            #xsup,ysup = meshgrid(xaxis,pl.flipud(xaxis));
+            #supp = pl.vstack([xsup.flatten(),ysup.flatten()]).T;
             #z = stats.multivariate_normal.pdf(supp,mu_mvn,sigma_mvn);
             #figure(); imshow(reshape(z,shape(xsup)),cmap=cm.gray,extent=[-slim,slim,-slim,slim]);
             #vlines(r_bound,-slim,slim,colors='g');
@@ -422,10 +422,10 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,
         ########################################################################
         for j in range(1,len(clims)):
             # remember that clims contains the bin edges in descending order
-            KLL = array([-INF_PROXY,clims[j]]);
-            KUL = array([r_bound,clims[j-1]]);
-            RLL = array([r_bound,clims[j]]);
-            RUL = array([INF_PROXY,clims[j-1]]);
+            KLL = pl.array([-INF_PROXY,clims[j]]);
+            KUL = pl.array([r_bound,clims[j-1]]);
+            RLL = pl.array([r_bound,clims[j]]);
+            RUL = pl.array([INF_PROXY,clims[j-1]]);
             p_know_conf[j-1,i] = p_old[i]*stats.mvn.mvnun(KLL,KUL,mu_mvn,sigma_mvn)[0];
             p_rem_conf[j-1,i] = p_old[i]*stats.mvn.mvnun(RLL,RUL,mu_mvn,sigma_mvn)[0];
         
@@ -437,18 +437,18 @@ def predicted_proportions(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,
 #def predicted_proportions_sim(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0):
 def predicted_proportions_sim(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,t_offset=0):
     # make c (the confidence levels) an array in case it is a scalar value
-    c = array(c,ndmin=1);
+    c = pl.array(c,ndmin=1);
     n = len(c);
     # form an array consisting of the appropriate (upper) integration limits
-    clims = hstack(([INF_PROXY],c,[-INF_PROXY]));
+    clims = pl.hstack(([INF_PROXY],c,[-INF_PROXY]));
     # compute process SD
-    sigma_r = sqrt(2*d_r*DELTA_T);
-    sigma_f = sqrt(2*d_f*DELTA_T);
-    sigma = sqrt(sigma_r**2+sigma_f**2);
+    sigma_r = pl.sqrt(2*d_r*DELTA_T);
+    sigma_f = pl.sqrt(2*d_f*DELTA_T);
+    sigma = pl.sqrt(sigma_r**2+sigma_f**2);
     
-    t = linspace(DELTA_T,MAX_T,NR_TSTEPS);
-    to_idx = argmin((t-t_offset)**2); # compute the index for t_offset
-    bound = exp(-tc_bound*clip(t-t_offset,0,None)); # this is the collapsing bound
+    t = pl.linspace(DELTA_T,MAX_T,NR_TSTEPS);
+    to_idx = pl.argmin((t-t_offset)**2); # compute the index for t_offset
+    bound = pl.exp(-tc_bound*pl.clip(t-t_offset,0,None)); # this is the collapsing bound
 
     # Now simulate NR_SAMPLES trials
     # 1. Generate a random position change for each time interval
@@ -465,9 +465,9 @@ def predicted_proportions_sim(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,t_o
     positions = pl.cumsum(delta_pos,1)+z0;
     r_positions = pl.cumsum(delta_r,1);
     # 3. Now loop through each sample trial to compute decisions and resp times
-    decisions = zeros(NR_SAMPLES);
-    resp_times = zeros(NR_SAMPLES);
-    final_pos = zeros((NR_SAMPLES,2))
+    decisions = pl.zeros(NR_SAMPLES);
+    resp_times = pl.zeros(NR_SAMPLES);
+    final_pos = pl.zeros((NR_SAMPLES,2))
     
     for i, pos in enumerate(positions):
         # Find the index where the position first crosses a boundary (i.e., 1 or -1)
@@ -486,23 +486,23 @@ def predicted_proportions_sim(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,t_o
     # distribution to add to the position at decision
     # the parameters below are for the post old/new decision interval
     
-    sigma_r_deltaT = sqrt(2*d_r*deltaT);
-    sigma_f_deltaT = sqrt(2*d_f*deltaT);
+    sigma_r_deltaT = pl.sqrt(2*d_r*deltaT);
+    sigma_f_deltaT = pl.sqrt(2*d_f*deltaT);
     r_deltaTs = stats.norm.rvs(mu_r*deltaT,sigma_r_deltaT,size=NR_SAMPLES);
     pos_deltaTs = stats.norm.rvs(mu_f*deltaT,sigma_f_deltaT,size=NR_SAMPLES)+r_deltaTs;
     final_pos[:,0]+=pos_deltaTs; final_pos[:,1]+=r_deltaTs;
     
     # now make the remember decision on the basis of the final position in the
     # r dimension
-    remembers = logical_and(decisions,final_pos[:,1]>r_bound);
+    remembers = pl.logical_and(decisions,final_pos[:,1]>r_bound);
     
     p_remember  = [];
     p_know = [];
     for j in range(1,len(clims)):
         # remember that the confidence levels are arranged in decreasing order
-        valid_confs = logical_and(final_pos[:,0]>clims[j],final_pos[:,0]<=clims[j-1]);
-        conf_rems = logical_and(valid_confs,remembers);
-        conf_knows = logical_and(valid_confs,logical_and(logical_not(remembers),decisions));
+        valid_confs = pl.logical_and(final_pos[:,0]>clims[j],final_pos[:,0]<=clims[j-1]);
+        conf_rems = pl.logical_and(valid_confs,remembers);
+        conf_knows = pl.logical_and(valid_confs,pl.logical_and(pl.logical_not(remembers),decisions));
         rem_RTs = resp_times[conf_rems];
         know_RTs = resp_times[conf_knows];
         params_rem = stats.gamma.fit(rem_RTs,floc=0);
@@ -513,50 +513,50 @@ def predicted_proportions_sim(c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,t_o
         p_remember.append(p_remember_conf);
         p_know.append(p_know_conf);
         
-    p_remember = array(p_remember);
-    p_know = array(p_know);
+    p_remember = pl.array(p_remember);
+    p_know = pl.array(p_know);
         
-    new_RTs = resp_times[logical_not(decisions)];
+    new_RTs = resp_times[pl.logical_not(decisions)];
     params_new = stats.gamma.fit(new_RTs,floc=0);
     p_new = stats.gamma.pdf(t,*params_new)*DELTA_T*len(new_RTs)/float(NR_SAMPLES);
     return p_remember,p_know,p_new,t;
 
 def predicted_proportions_NC(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_fftw=True):
     # compute process SD
-    sigma_r = sqrt(2*d_r*DELTA_T);
-    sigma_f = sqrt(2*d_f*DELTA_T);
-    sigma = sqrt(sigma_r**2+sigma_f**2);
+    sigma_r = pl.sqrt(2*d_r*DELTA_T);
+    sigma_f = pl.sqrt(2*d_f*DELTA_T);
+    sigma = pl.sqrt(sigma_r**2+sigma_f**2);
 
     # compute the correlation for r given r+f
     rho = sigma_r/sigma;
     rhoF = sigma_f/sigma;
 
-    t = linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
-    bound = exp(-tc_bound*t); # this is the collapsing bound
+    t = pl.linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
+    bound = pl.exp(-tc_bound*t); # this is the collapsing bound
      
     mu = (mu_r+mu_f)*DELTA_T; # this is the average overall drift rate, with r = 'recall' and f = 'familiar'
     # compute the bounding limit of the space domain. This should include at least 99% of the probability mass when the particle is at the largest possible bound
     space_lim = max(bound)+3*sigma;
     delta_s = 2*space_lim/NR_SSTEPS;
     # finally, construct the space axis
-    x = linspace(-space_lim,space_lim,NR_SSTEPS);
+    x = pl.linspace(-space_lim,space_lim,NR_SSTEPS);
     # compute the diffusion kernel
     kernel = stats.norm.pdf(x,mu,sigma)*delta_s;
     # ... and its Fourier transform. We'll use this to compute FD convolutions
     if(use_fftw):
         ft_kernel = fftw.fft(kernel);
     else:
-        ft_kernel = fft(kernel);
-    tx = zeros((len(t),len(x)));
-    #p_know = zeros(shape(t));
-    p_remember = zeros(shape(t));
-    p_old = zeros(shape(t));
-    p_new = zeros(shape(t));
+        ft_kernel = pl.fft(kernel);
+    tx = pl.zeros((len(t),len(x)));
+    #p_know = pl.zeros(shape(t));
+    p_remember = pl.zeros(pl.shape(t));
+    p_old = pl.zeros(pl.shape(t));
+    p_new = pl.zeros(pl.shape(t));
 
     # take care of the first timestep
     tx[0] = stats.norm.pdf(x,mu+z0,sigma)*delta_s;
-    p_old[0] = sum(tx[0][x>=bound[0]]);
-    p_new[0] = sum(tx[0][x<=-bound[0]]);
+    p_old[0] = pl.sum(tx[0][x>=bound[0]]);
+    p_new[0] = pl.sum(tx[0][x<=-bound[0]]);
     # compute STD(r) for the current time
     s_r = sigma_r;
     s_f = sigma_f;
@@ -566,11 +566,11 @@ def predicted_proportions_NC(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_ff
     mu_r_cond = mu_r*t[0]+rho*s_r*(bound[0]-t[0]*(mu_r+mu_f))/s_comb;
     mu_f_cond = mu_f*t[0]+rhoF*s_f*(bound[0]-t[0]*(mu_r+mu_f))/s_comb;
     # compute STD[r|(r+f)]
-    s_r_cond = s_r*sqrt(1-rho**2);
-    s_f_cond = s_f*sqrt(1-rhoF**2);
+    s_r_cond = s_r*pl.sqrt(1-rho**2);
+    s_f_cond = s_f*pl.sqrt(1-rhoF**2);
     
     mu_r_delta = mu_r_cond+mu_r*deltaT;
-    s_r_delta = sqrt(s_r_cond**2+2*d_r*deltaT);
+    s_r_delta = pl.sqrt(s_r_cond**2+2*d_r*deltaT);
     p_remember[0] = p_old[0]*stats.norm.sf(r_bound,mu_r_delta,s_r_delta);
     # remove from consideration any particles that already hit the bound
     tx[0]*=(abs(x)<bound[0]);
@@ -578,22 +578,22 @@ def predicted_proportions_NC(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_ff
         # convolve the particle distribution from the previous timestep
         # with the diffusion kernel (using Fourier domain convolution)
         if(use_fftw):
-            tx[i] = abs(ifftshift(fftw.ifft(fftw.fft(tx[i-1])*ft_kernel)));
+            tx[i] = abs(pl.ifftshift(fftw.ifft(fftw.fft(tx[i-1])*ft_kernel)));
         else:
-            tx[i] = abs(ifftshift(ifft(fft(tx[i-1])*ft_kernel)));
+            tx[i] = abs(pl.ifftshift(pl.ifft(pl.fft(tx[i-1])*ft_kernel)));
 
         p_pos = tx[i][x>=bound[i]]; # probability of each particle position above the upper bound
         x_pos = x[x>=bound[i]];     # location of each particle position above the upper bound
 
-        p_old[i] = sum(p_pos); # total probability that particle crosses upper bound
-        p_new[i] = sum(tx[i][x<=-bound[i]]); # probability that particle crosses lower bound
+        p_old[i] = pl.sum(p_pos); # total probability that particle crosses upper bound
+        p_new[i] = pl.sum(tx[i][x<=-bound[i]]); # probability that particle crosses lower bound
         
         # compute STD(r) for the current time
-        s_r = sqrt(2*d_r*t[i]);
-        s_f = sqrt(2*d_f*t[i]);
+        s_r = pl.sqrt(2*d_r*t[i]);
+        s_f = pl.sqrt(2*d_f*t[i]);
         # compute STD[r|(r+f)]
-        s_r_cond = s_r*sqrt(1-rho**2);
-        s_f_cond = s_f*sqrt(1-rhoF**2);
+        s_r_cond = s_r*pl.sqrt(1-rho**2);
+        s_f_cond = s_f*pl.sqrt(1-rhoF**2);
         # compute E[r|(r+f)]
         mu_r_cond = mu_r*t[i]+(x_pos-t[i]*(mu_r+mu_f)-z0)*rho**2;
         mu_f_cond = mu_f*t[i]+(x_pos-t[i]*(mu_r+mu_f)-z0)*rhoF**2;
@@ -604,8 +604,8 @@ def predicted_proportions_NC(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_ff
         # p_remember[i] = sum(p_pos*stats.norm.sf(r_bound,mu_r_cond,s_r_cond));
         # new method for computin p_remember
         mu_r_delta = mu_r_cond+mu_r*deltaT;
-        s_r_delta = sqrt(s_r_cond**2+2*d_r*deltaT);
-        p_remember[i] = sum(p_pos*stats.norm.sf(r_bound,mu_r_delta,s_r_delta));
+        s_r_delta = pl.sqrt(s_r_cond**2+2*d_r*deltaT);
+        p_remember[i] = pl.sum(p_pos*stats.norm.sf(r_bound,mu_r_delta,s_r_delta));
 
     #p_remember = p_old-p_know;
     p_know = p_old-p_remember;
@@ -634,12 +634,12 @@ def emp_v_prediction(model_params):
     params_est_new = [c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT];
     nr_conf = 1;#len(c);
     # adjust the number of confidence levels in the data to match number in model
-    rhconf = clip(rem_hit[:,1],0,nr_conf); khconf = clip(know_hit[:,1],0,nr_conf);
-    rfconf = clip(rem_fa[:,1],0,nr_conf); kfconf = clip(know_fa[:,1],0,nr_conf);
-    rh_rts = [rem_hit[rhconf==i,0] for i in unique(rhconf)];
-    kh_rts = [know_hit[khconf==i,0] for i in unique(khconf)];
-    rf_rts = [rem_fa[rfconf==i,0] for i in unique(rfconf)];
-    kf_rts = [know_fa[kfconf==i,0] for i in unique(kfconf)];
+    rhconf = pl.clip(rem_hit[:,1],0,nr_conf); khconf = pl.clip(know_hit[:,1],0,nr_conf);
+    rfconf = pl.clip(rem_fa[:,1],0,nr_conf); kfconf = pl.clip(know_fa[:,1],0,nr_conf);
+    rh_rts = [rem_hit[rhconf==i,0] for i in pl.unique(rhconf)];
+    kh_rts = [know_hit[khconf==i,0] for i in pl.unique(khconf)];
+    rf_rts = [rem_fa[rfconf==i,0] for i in pl.unique(rfconf)];
+    kf_rts = [know_fa[kfconf==i,0] for i in pl.unique(kfconf)];
 
     old_data = [rh_rts,kh_rts,miss[:,0]];
     new_data = [rf_rts,kf_rts,CR[:,0]];
@@ -662,20 +662,20 @@ def plot_comparison(p_dist,e_dist,e_total):
     # compute empirical p(remember|old)
     p_rem_total = len(e_dist)*1.0/e_total;
     # compute density histogram
-    hd,edges = histogram(rem_hit[:,0],bins=40,range=[0,10],density=True);
-    hist_density = hstack([[0],hd]);
-    step(edges,hist_density*p_rem_total,color='0.5',lw=2);
+    hd,edges = pl.histogram(rem_hit[:,0],bins=40,range=[0,10],density=True);
+    hist_density = pl.hstack([[0],hd]);
+    pl.step(edges,hist_density*p_rem_total,color='0.5',lw=2);
     # plot the PDF for observed data
     rem_old = stats.kde.gaussian_kde(rem_hit[:,0]);
-    plot(t,rem_old(t)*p_rem_total,'r',lw=2)
+    pl.plot(t,rem_old(t)*p_rem_total,'r',lw=2)
     # generate the raster plot of raw RTs
     rmin = 0;
     rmax = max(rem_old(t))*0.1;
-    vlines(rem_hit[:,0],rmin,rmax,color='k',alpha=0.15);
+    pl.vlines(rem_hit[:,0],rmin,rmax,color='k',alpha=0.15);
     # plot the PDF for predicted data
     # note: the division by DELTA_T below is to make sure that you are plotting
     # probability densities (rather than probability masses)
-    plot(t,p_remember.sum(0)/DELTA_T,'g',lw=2)
-    title('Remember Hits');
-    axis([0,t.max(),None,None])
-    show();
+    pl.plot(t,p_remember.sum(0)/DELTA_T,'g',lw=2)
+    pl.title('Remember Hits');
+    pl.axis([0,t.max(),None,None])
+    pl.show();
