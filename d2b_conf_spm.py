@@ -1,8 +1,12 @@
+# standard library imports
 import shelve
+from collections import namedtuple
+# scientific library imports
 import pylab as pl
 from pylab import fft,ifft,fftshift,ifftshift
 from scipy import stats
 from scipy import optimize
+# local imports
 import fftw_test as fftw
 from multinomial_funcs import multinom_loglike,chi_square_gof
 
@@ -44,10 +48,18 @@ fftw.fftw_setup(pl.zeros(NR_SSTEPS),NR_THREADS);
 # previously fitted parameters and bounds
 # version with single diffusion parameter and lowest confidence bound fixed at zero
 # c,mu_old,d,mu_new,tc_bound,z0,deltaT,t_offset = model_params
-params_est_old = [0.9478,0.3213,0.4163,-0.2832,0.047,-0.1273,0.4787,0.5894]; # fitted w/ 10 quantiles, chisq = 601
-params_est = [ 0.9703,0.3282,0.4126,-0.2719,0.0471,-0.1242,0.5034,0.5692]; # fitted w/ 10 quantiles and remember/know categories, chisq = 760
 
-param_bounds = [(0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(0.05,1.0),(-1.0,1.0),(EPS,2.0),(0,0.5)];
+# 12/24/2016: modified (for flexibility) to use named tuple instead of list
+# FullParams defines the overall parametrs for the set of old and new words
+# combined.
+FullParams = namedtuple('FullParams',['c','mu_old','d','mu_new','tc_bound',
+                                        'z0','deltaT','t_offset'])
+
+params_est_old = FullParams(0.9478,0.3213,0.4163,-0.2832,0.047,-0.1273,0.4787,0.5894); # fitted w/ 10 quantiles, chisq = 601
+params_est = FullParams(0.9703,0.3282,0.4126,-0.2719,0.0471,-0.1242,0.5034,0.5692); # fitted w/ 10 quantiles and remember/know categories, chisq = 760
+
+param_bounds = FullParams((0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(0.05,1.0),
+                          (-1.0,1.0),(EPS,2.0),(0,0.5));
 
 
 def find_ml_params_all(quantiles=NR_QUANTILES,nr_conf_bounds=2):

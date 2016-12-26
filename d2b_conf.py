@@ -1,10 +1,12 @@
+# standard library imports
 import shelve
-#from pylab import *
+from collections import namedtuple
+# scientific library imports
 import pylab as pl
 import numpy
 from scipy import stats
 from scipy import optimize
-import pyfftw
+# local imports
 import fftw_test as fftw
 from multinomial_funcs import multinom_loglike,chi_square_gof
 
@@ -38,8 +40,14 @@ NR_QUANTILES=10;
 
 fftw.fftw_setup(pl.zeros(NR_SSTEPS),NR_THREADS);
 
+# 12/24/2016: modified (for flexibility) to use named tuple instead of list
+# DPMParams defines the overall parametrs for the set of old and new words
+# combined. 
+DPMParams = namedtuple('DPMParams',['c','mu_r','mu_f','d_r','d_f','tc_bound',
+                    'r_bound','z0','mu_r_new','mu_f_new','deltaT','t_offset'])
 #c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0, mu_r0,mu_f0,deltaT,t_offset = model_params;
-params_est = [0.9984,0.002,0.3035,0.0037,0.3736,0.0585,0.001,-0.1306,-0.0142,-0.2438,0.5859,0.5126];
+params_est = DPMParams(0.9984,0.002,0.3035,0.0037,0.3736,0.0585,0.001,-0.1306,
+                       -0.0142,-0.2438,0.5859,0.5126);
 # new params fitted using 10 quantiles: chisq = 794
 # parameters taken from single-process model
 #params_est_spm = [0.9452,0.0,0.3236,EPS,0.4126,0.0486,0,-0.124,0.0,-0.2745,0.5001,0.5527];
@@ -47,8 +55,8 @@ params_est = [0.9984,0.002,0.3035,0.0037,0.3736,0.0585,0.001,-0.1306,-0.0142,-0.
 params_est_spm = [1.0,0.3103,0.4169,-0.269,0.0458,-0.1284,0.5223,0.5656,0.0];
 # parameters fit using spm submodel w/ 10 quantiles. chisq = 828
 
-param_bounds = [(0.0,1.0),(-2.0,2.0),(-2.0,2.0),(EPS,1.0),(EPS,1.0),(0.05,1.0),\
-                (0.0,1.0),(-1.0,1.0),(-2.0,2.0),(-2.0,2.0),(EPS,2.0),(0,0.5)];
+param_bounds = DPMParams((0.0,1.0),(-2.0,2.0),(-2.0,2.0),(EPS,1.0),(EPS,1.0),
+    (0.05,1.0),(0.0,1.0),(-1.0,1.0),(-2.0,2.0),(-2.0,2.0),(EPS,2.0),(0,0.5));
 
 
 def find_ml_params_all(quantiles=NR_QUANTILES):
@@ -97,22 +105,6 @@ def compute_gof_all(model_params,quantiles=NR_QUANTILES,spm=False):
     res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
     compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
     return res;
-
-#def find_ml_params_all_mdf(quantiles=4):
-#    # computes mle of params using as few parameters as possible
-#    # at the moment, that means freezing mu_f0 and mu_r0 at 0
-#    def obj_func(model_params):
-#        c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT = model_params;
-#        mu_f0 = mu_r0 =0;
-#        params_est_old = [c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT];
-#        params_est_new = [c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT];
-#        old_data = [rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1]];
-#        new_data = [rem_fa[:,0],know_fa[:,0],CR[:,0],rem_fa[:,1],know_fa[:,1]];
-#        res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
-#        compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
-#        return res;
-#    param_bounds = [(EPS,1.0),(-1.0,1.0),(-1.0,1.0),(0.01,2.0),(0.01,2.0),(0.05,1.0),(EPS,1.0),(-1.0,1.0),(0.25,2.0)];
-#    return optimize.differential_evolution(obj_func,param_bounds)
 
 def compute_model_gof(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_conf,nr_quantiles=NR_QUANTILES):
     # computes the chi square fit of the model to the data
