@@ -23,12 +23,13 @@ data_path = 'neha/data/'; # this is the base path for the data files
 
 # Read in new Vincentized RT data
 db = shelve.open(data_path+'neha_data.dat','r');
-rem_hit = db['rem_hit'];
-know_hit = db['know_hit'];
-rem_fa = db['rem_fa'];
-know_fa = db['know_fa'];
-CR = db['CR'];
-miss = db['miss'];
+DATA = db['empirical_results'];
+# rem_hit = db['rem_hit'];
+# know_hit = db['know_hit'];
+# rem_fa = db['rem_fa'];
+# know_fa = db['know_fa'];
+# CR = db['CR'];
+# miss = db['miss'];
 db.close();
 
  
@@ -62,7 +63,7 @@ param_bounds = FullParams((0.0,1.0),(-2.0,2.0),(EPS,2.0),(-2.0,2.0),(0.05,1.0),
                           (-1.0,1.0),(EPS,2.0),(0,0.5));
 
 
-def find_ml_params_all(quantiles=NR_QUANTILES,nr_conf_bounds=2):
+def find_ml_params_all(quantiles=NR_QUANTILES,nr_conf_bounds=2,data=DATA):
     """
     does a global maximum-likelihood parameter search, constrained by the bounds
     listed in param_bounds, and returns the result. Each RT distribution (i.e.,
@@ -71,7 +72,7 @@ def find_ml_params_all(quantiles=NR_QUANTILES,nr_conf_bounds=2):
     """
     return optimize.differential_evolution(compute_gof_all,param_bounds)
 
-def find_ml_params_all_lm(quantiles=NR_QUANTILES,nr_conf_bounds=2):
+def find_ml_params_all_lm(quantiles=NR_QUANTILES,nr_conf_bounds=2,data=DATA):
     """
     computes MLE of params using a local (fast) and unconstrained optimization
     algorithm. Each RT distribution (i.e., for each judgment category and
@@ -81,7 +82,7 @@ def find_ml_params_all_lm(quantiles=NR_QUANTILES,nr_conf_bounds=2):
     # computes mle of params using a local (fast) optimization algorithm
     return optimize.fmin(compute_gof_all,params_est)
 
-def compute_gof_all(model_params,quantiles=NR_QUANTILES,remknow=True):
+def compute_gof_all(model_params,quantiles=NR_QUANTILES,remknow=True,data=DATA):
     """
     computes the overall goodness-of-fit of the model defined by model_params.
     This is the sum of the NLL or chi-square statistics for the distribution
@@ -95,18 +96,20 @@ def compute_gof_all(model_params,quantiles=NR_QUANTILES,remknow=True):
     params_est_new = [[c,0],mu_new,d,tc_bound,z0,deltaT,t_offset];
     if(remknow):
         # computes gof using separate distributions for remember vs. know.
-        old_data = [rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1]];
-        new_data = [rem_fa[:,0],know_fa[:,0],CR[:,0],rem_fa[:,1],know_fa[:,1]];
+        old_data = [data.rem_hit.rt,data.know_hit.rt,data.miss.rt,data.rem_hit.conf,data.know_hit.conf];
+        new_data = [data.rem_fa.rt,data.know_fa.rt,data.CR.rt,data.rem_fa.conf,data.know_fa.conf];
         # compute the combined goodness-of-fit
         res = compute_model_gof_rk(params_est_old,*old_data,nr_quantiles=quantiles)+ \
         compute_model_gof_rk(params_est_new,*new_data,nr_quantiles=quantiles);
     else:
         # computes gof using concatenated remember and know responses
-        old_data = [pl.hstack([rem_hit[:,0],know_hit[:,0]]),miss[:,0],pl.hstack([rem_hit[:,1],know_hit[:,1]])];
-        new_data = [pl.hstack([rem_fa[:,0],know_fa[:,0]]),CR[:,0],pl.hstack([rem_fa[:,1],know_fa[:,1]])];
+        old_data = [pl.hstack([data.rem_hit.rt,data.know_hit.rt]),
+                    data.miss.rt,pl.hstack([data.rem_hit.coeff,data.know_hit.coeff])];
+        new_data = [pl.hstack([data.rem_fa.rt,data.know_fa.rt]),
+                    data.CR.rt,pl.hstack([data.rem_fa.coeff,data.know_fa.coeff])];
         # compute the combined goodness-of-fit
-        res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
-        compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
+        res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)\
+            + compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
     return res;
 
 def compute_model_gof(model_params,old_RTs,new_RTs,old_conf,nr_quantiles,use_chisq=True):
@@ -127,7 +130,8 @@ def compute_model_gof(model_params,old_RTs,new_RTs,old_conf,nr_quantiles,use_chi
     # adjust the number of confidence levels in the data to match
     old_conf = pl.clip(old_conf,0,nr_conf_levels-1);
     ## compute the number of RTs falling into each quantile bin
-    old_freqs = pl.array([-pl.diff([pl.sum(old_RTs[old_conf==i]>q) for q in old_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
+    old_freqs = pl.array([-pl.diff([pl.sum(old_RTs[old_conf==i]>q)
+            for q in old_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
     ## I think this is where the problem was. The confidence levels in the
     ## model are in descending order, while these (for the empircal data) are
     ## in ascending order. I'll flip them here
@@ -388,23 +392,23 @@ def emp_v_prediction(model_params,nr_conf=2):
     params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT,t_offset];
     params_est_new = [c,mu_new,d_old,tc_bound,z0,deltaT,t_offset];
     
-    hits = pl.vstack([rem_hit,know_hit]);
-    FAs = pl.vstack([rem_fa,know_fa]);
+    hits = pl.vstack([data.rem_hit,data.know_hit]);
+    FAs = pl.vstack([data.rem_fa,data.know_fa]);
 
     nr_conf = len(c);
     # adjust the number of confidence levels in the data to match number in model
-    hconf = pl.clip(hits[:,1],0,nr_conf);
-    fconf = pl.clip(FAs[:,1],0,nr_conf);
+    hconf = pl.clip(hits.coeff,0,nr_conf);
+    fconf = pl.clip(FAs.coeff,0,nr_conf);
     
     # flip the arrays below so that the confidence levels appear in descending order
-    h_rts = [hits[hconf==i,0] for i in reversed(unique(hconf))];
-    f_rts = [FAs[fconf==i,0] for i in reversed(unique(fconf))];
+    h_rts = [hits.rt[hconf==i] for i in reversed(unique(hconf))];
+    f_rts = [FAs.rt[fconf==i] for i in reversed(unique(fconf))];
 
-    old_data = [h_rts,miss[:,0]];
-    new_data = [f_rts,CR[:,0]];
+    old_data = [h_rts,data.miss.rt];
+    new_data = [f_rts,data.CR.rt];
     
-    n_old = len(hits)+len(miss);
-    n_new = len(FAs)+len(CR);
+    n_old = len(hits)+len(data.miss);
+    n_new = len(FAs)+len(data.CR);
     
     # compute predicted proportions
     pp_old = predicted_proportions(*params_est_old);

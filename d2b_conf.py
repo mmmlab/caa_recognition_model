@@ -18,12 +18,13 @@ data_path = 'neha/data/'; # this is the base path for the data files
 
 # Read in new Vincentized RT data
 db = shelve.open(data_path+'neha_data.dat','r');
-rem_hit = db['rem_hit'];
-know_hit = db['know_hit'];
-rem_fa = db['rem_fa'];
-know_fa = db['know_fa'];
-CR = db['CR'];
-miss = db['miss'];
+DATA = db['empirical_results']; 
+# rem_hit = db['rem_hit'];
+# know_hit = db['know_hit'];
+# rem_fa = db['rem_fa'];
+# know_fa = db['know_fa'];
+# CR = db['CR'];
+# miss = db['miss'];
 db.close();
 
 
@@ -83,7 +84,7 @@ def find_ml_params_all_lm(quantiles=NR_QUANTILES,spm=False):
     else:
         return optimize.fmin(obj_func,params_est);
 
-def compute_gof_all(model_params,quantiles=NR_QUANTILES,spm=False):
+def compute_gof_all(model_params,quantiles=NR_QUANTILES,spm=False,data=DATA):
     """
     computes the overall goodness-of-fit of the model defined by model_params.
     This is the sum of the NLL or chi-square statistics for the distribution
@@ -99,8 +100,8 @@ def compute_gof_all(model_params,quantiles=NR_QUANTILES,spm=False):
         c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,mu_r0,mu_f0,deltaT,t_offset = model_params;
     params_est_old = [[c,0],mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,t_offset];
     params_est_new = [[c,0],mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT,t_offset];
-    old_data = [rem_hit[:,0],know_hit[:,0],miss[:,0],rem_hit[:,1],know_hit[:,1]];
-    new_data = [rem_fa[:,0],know_fa[:,0],CR[:,0],rem_fa[:,1],know_fa[:,1]];
+    old_data = [data.rem_hit.rt,data.know_hit.rt,data.miss.rt,data.rem_hit.coeff,data.know_hit.coeff];
+    new_data = [data.rem_fa.rt,data.know_fa.rt,data.CR.rt,data.rem_fa.coeff,data.know_fa.coeff];
     # compute the combined goodness-of-fit
     res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
     compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
@@ -626,18 +627,18 @@ def emp_v_prediction(model_params):
     params_est_new = [c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT];
     nr_conf = 1;#len(c);
     # adjust the number of confidence levels in the data to match number in model
-    rhconf = pl.clip(rem_hit[:,1],0,nr_conf); khconf = pl.clip(know_hit[:,1],0,nr_conf);
-    rfconf = pl.clip(rem_fa[:,1],0,nr_conf); kfconf = pl.clip(know_fa[:,1],0,nr_conf);
-    rh_rts = [rem_hit[rhconf==i,0] for i in pl.unique(rhconf)];
-    kh_rts = [know_hit[khconf==i,0] for i in pl.unique(khconf)];
-    rf_rts = [rem_fa[rfconf==i,0] for i in pl.unique(rfconf)];
-    kf_rts = [know_fa[kfconf==i,0] for i in pl.unique(kfconf)];
+    rhconf = pl.clip(data.rem_hit.coeff,0,nr_conf); khconf = pl.clip(data.know_hit.coeff,0,nr_conf);
+    rfconf = pl.clip(data.rem_fa.coeff,0,nr_conf); kfconf = pl.clip(data.know_fa.coeff,0,nr_conf);
+    rh_rts = [data.rem_hit[rhconf==i,0] for i in pl.unique(rhconf)];
+    kh_rts = [data.know_hit[khconf==i,0] for i in pl.unique(khconf)];
+    rf_rts = [data.rem_fa[rfconf==i,0] for i in pl.unique(rfconf)];
+    kf_rts = [data.know_fa[kfconf==i,0] for i in pl.unique(kfconf)];
 
-    old_data = [rh_rts,kh_rts,miss[:,0]];
-    new_data = [rf_rts,kf_rts,CR[:,0]];
+    old_data = [rh_rts,kh_rts,data.miss.rt];
+    new_data = [rf_rts,kf_rts,data.CR.rt];
     
-    n_old = len(rem_hit)+len(know_hit)+len(miss);
-    n_new = len(rem_fa)+len(know_fa)+len(CR);
+    n_old = len(data.rem_hit)+len(data.know_hit)+len(data.miss);
+    n_new = len(data.rem_fa)+len(data.know_fa)+len(data.CR);
     
     # compute predicted proportions
     pp_old = predicted_proportions(*params_est_old);
@@ -649,21 +650,21 @@ def emp_v_prediction(model_params):
 def plot_comparison(p_dist,e_dist,e_total):
     
     # plot the histogram for observed data
-    #hist(rem_hit[:,0],bins=40,range = [0,10],histtype='step',color='0.5',lw=2,normed=True);
+    #hist(data.rem_hit[:,0],bins=40,range = [0,10],histtype='step',color='0.5',lw=2,normed=True);
     
     # compute empirical p(remember|old)
     p_rem_total = len(e_dist)*1.0/e_total;
     # compute density histogram
-    hd,edges = pl.histogram(rem_hit[:,0],bins=40,range=[0,10],density=True);
+    hd,edges = pl.histogram(data.rem_hit.rt,bins=40,range=[0,10],density=True);
     hist_density = pl.hstack([[0],hd]);
     pl.step(edges,hist_density*p_rem_total,color='0.5',lw=2);
     # plot the PDF for observed data
-    rem_old = stats.kde.gaussian_kde(rem_hit[:,0]);
+    rem_old = stats.kde.gaussian_kde(data.rem_hit.rt);
     pl.plot(t,rem_old(t)*p_rem_total,'r',lw=2)
     # generate the raster plot of raw RTs
     rmin = 0;
     rmax = max(rem_old(t))*0.1;
-    pl.vlines(rem_hit[:,0],rmin,rmax,color='k',alpha=0.15);
+    pl.vlines(data.rem_hit.rt,rmin,rmax,color='k',alpha=0.15);
     # plot the PDF for predicted data
     # note: the division by DELTA_T below is to make sure that you are plotting
     # probability densities (rather than probability masses)

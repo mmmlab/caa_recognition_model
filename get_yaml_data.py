@@ -1,10 +1,19 @@
-import yaml
+# standard library imports
 import shelve
+from collections import namedtuple
+# scientific library imports
 import numpy as np
 from numpy import array
+# third party imports
+import yaml
 
 YAML_FILENAME = 'neha/data/neha_data_revised.yml';
 
+# empirical results structure
+ERStruct = namedtuple('ERStruct',['know_hit','rem_hit','know_fa','rem_fa',
+                                  'CR','miss']);
+# reaction time & confidence structure
+RTConf = namedtuple('RTConf',['rt','conf']);
 
 def save_word_lists():
     """
@@ -58,12 +67,7 @@ def reformat_revised_data():
     aggregated_data = compute_aggregate_results(neha_data);
     # save the reformatted data into a shelve database
     db = shelve.open('neha/data/neha_data.dat','n');
-    db['rem_hit'] = rem_hit;
-    db['know_hit'] = know_hit;
-    db['rem_fa'] = rem_fa;
-    db['know_fa'] = know_fa;
-    db['CR'] = CR;
-    db['miss'] = miss;
+    db['empirical_results'] = aggregated_data;
     db.close();
 
 def get_word_data(word):
@@ -99,7 +103,7 @@ def compute_aggregate_results(trial_list):
     Args: a list of mappings each representing the results of an individual
     trial.
     
-    Returns: a dictionary of classification results each arranged in a format
+    Returns: a named tuple representing the classification results in a format
     similar to that used for the original analysis. I.e., in arrays with two
     columns representing rt and confidence, respectively.
     """
@@ -116,15 +120,15 @@ def compute_aggregate_results(trial_list):
     miss = array([(el['rt.normed'],el['confidence']) for el in trial_list \
                     if el['judgment']=='miss']);
     
-    # store these aggregate results in a dictionary
-    result = {
-        'rem_hit': rem_hit,
-        'know_hit': know_hit,
-        'rem_fa': rem_fa,
-        'know_fa': know_fa,
-        'CR': CR,
-        'miss': miss
-    };
+    # convert arrays to rt & confidence structures
+    rem_hit = RTConf(*rem_hit.T);
+    know_hit = RTConf(*know_hit.T);
+    rem_fa = RTConf(*rem_fa.T);
+    know_fa = RTConf(*know_fa.T);
+    CR = RTConf(*CR.T);
+    miss = RTConf(*miss.T);
     
-    return result;
+    res = ERStruct(know_hit,rem_hit,know_fa,rem_fa,CR,miss);
+    
+    return res;
     
