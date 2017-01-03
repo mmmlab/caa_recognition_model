@@ -100,8 +100,8 @@ def compute_gof_all(model_params,quantiles=NR_QUANTILES,spm=False,data=DATA):
         c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,mu_r0,mu_f0,deltaT,t_offset = model_params;
     params_est_old = [[c,0],mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,t_offset];
     params_est_new = [[c,0],mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT,t_offset];
-    old_data = [data.rem_hit.rt,data.know_hit.rt,data.miss.rt,data.rem_hit.coeff,data.know_hit.coeff];
-    new_data = [data.rem_fa.rt,data.know_fa.rt,data.CR.rt,data.rem_fa.coeff,data.know_fa.coeff];
+    old_data = [data.rem_hit.rt,data.know_hit.rt,data.miss.rt,data.rem_hit.conf,data.know_hit.conf];
+    new_data = [data.rem_fa.rt,data.know_fa.rt,data.CR.rt,data.rem_fa.conf,data.know_fa.conf];
     # compute the combined goodness-of-fit
     res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
     compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
@@ -627,8 +627,8 @@ def emp_v_prediction(model_params):
     params_est_new = [c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT];
     nr_conf = 1;#len(c);
     # adjust the number of confidence levels in the data to match number in model
-    rhconf = pl.clip(data.rem_hit.coeff,0,nr_conf); khconf = pl.clip(data.know_hit.coeff,0,nr_conf);
-    rfconf = pl.clip(data.rem_fa.coeff,0,nr_conf); kfconf = pl.clip(data.know_fa.coeff,0,nr_conf);
+    rhconf = pl.clip(data.rem_hit.conf,0,nr_conf); khconf = pl.clip(data.know_hit.conf,0,nr_conf);
+    rfconf = pl.clip(data.rem_fa.conf,0,nr_conf); kfconf = pl.clip(data.know_fa.conf,0,nr_conf);
     rh_rts = [data.rem_hit[rhconf==i,0] for i in pl.unique(rhconf)];
     kh_rts = [data.know_hit[khconf==i,0] for i in pl.unique(khconf)];
     rf_rts = [data.rem_fa[rfconf==i,0] for i in pl.unique(rfconf)];

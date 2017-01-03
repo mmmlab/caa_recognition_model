@@ -82,6 +82,16 @@ def find_ml_params_all_lm(quantiles=NR_QUANTILES,nr_conf_bounds=2,data=DATA):
     # computes mle of params using a local (fast) optimization algorithm
     return optimize.fmin(compute_gof_all,params_est)
 
+def find_ml_params_word(quantiles=NR_QUANTILES,nr_conf_bounds=2,data=DATA):
+    """
+    computes MLE of params using a local (fast) and unconstrained optimization
+    algorithm. Each RT distribution (i.e., for each judgment category and
+    confidence level) is represented using the number of quantiles specified by
+    the 'quantiles' parameter.
+    """
+    # computes mle of params using a local (fast) optimization algorithm
+    return optimize.fmin(compute_gof_word,params_est)
+
 def compute_gof_all(model_params,quantiles=NR_QUANTILES,remknow=True,data=DATA):
     """
     computes the overall goodness-of-fit of the model defined by model_params.
@@ -104,12 +114,34 @@ def compute_gof_all(model_params,quantiles=NR_QUANTILES,remknow=True,data=DATA):
     else:
         # computes gof using concatenated remember and know responses
         old_data = [pl.hstack([data.rem_hit.rt,data.know_hit.rt]),
-                    data.miss.rt,pl.hstack([data.rem_hit.coeff,data.know_hit.coeff])];
+                    data.miss.rt,pl.hstack([data.rem_hit.conf,data.know_hit.conf])];
         new_data = [pl.hstack([data.rem_fa.rt,data.know_fa.rt]),
-                    data.CR.rt,pl.hstack([data.rem_fa.coeff,data.know_fa.coeff])];
+                    data.CR.rt,pl.hstack([data.rem_fa.conf,data.know_fa.conf])];
         # compute the combined goodness-of-fit
         res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)\
             + compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
+    return res;
+
+def compute_gof_word(model_params,quantiles=NR_QUANTILES,remknow=True,data=DATA):
+    """
+    computes the overall goodness-of-fit of the model defined by model_params.
+    This is the sum of the NLL or chi-square statistics for the distribution
+    of responses to both the old and new words.
+    """
+    # unpack the model parameters
+    c,mu_old,d,tc_bound,z0,deltaT,t_offset = model_params;
+    params_est_old = [[c,0],mu_old,d,tc_bound,z0,deltaT,t_offset];
+    if(remknow):
+        # computes gof using separate distributions for remember vs. know.
+        old_data = [data.rem_hit.rt,data.know_hit.rt,data.miss.rt,data.rem_hit.conf,data.know_hit.conf];
+        # compute the goodness-of-fit
+        res = compute_model_gof_rk(params_est_old,*old_data,nr_quantiles=quantiles);
+    else:
+        # computes gof using concatenated remember and know responses
+        old_data = [pl.hstack([data.rem_hit.rt,data.know_hit.rt]),
+                    data.miss.rt,pl.hstack([data.rem_hit.conf,data.know_hit.conf])];
+        # compute the goodness-of-fit
+        res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles);
     return res;
 
 def compute_model_gof(model_params,old_RTs,new_RTs,old_conf,nr_quantiles,use_chisq=True):
@@ -397,8 +429,8 @@ def emp_v_prediction(model_params,nr_conf=2):
 
     nr_conf = len(c);
     # adjust the number of confidence levels in the data to match number in model
-    hconf = pl.clip(hits.coeff,0,nr_conf);
-    fconf = pl.clip(FAs.coeff,0,nr_conf);
+    hconf = pl.clip(hits.conf,0,nr_conf);
+    fconf = pl.clip(FAs.conf,0,nr_conf);
     
     # flip the arrays below so that the confidence levels appear in descending order
     h_rts = [hits.rt[hconf==i] for i in reversed(unique(hconf))];
