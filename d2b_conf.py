@@ -19,12 +19,6 @@ data_path = 'neha/data/'; # this is the base path for the data files
 # Read in new Vincentized RT data
 db = shelve.open(data_path+'neha_data.dat','r');
 DATA = db['empirical_results']; 
-# rem_hit = db['rem_hit'];
-# know_hit = db['know_hit'];
-# rem_fa = db['rem_fa'];
-# know_fa = db['know_fa'];
-# CR = db['CR'];
-# miss = db['miss'];
 db.close();
 
 
