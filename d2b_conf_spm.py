@@ -8,7 +8,10 @@ from scipy import stats
 from scipy import optimize
 # local imports
 import fftw_test as fftw
-from multinomial_funcs import multinom_loglike,chi_square_gof
+from neha.multinomial_funcs import multinom_loglike,chi_square_gof
+import neha.get_yaml_data
+reload(neha.get_yaml_data)
+from neha.get_yaml_data import filter_word_data;
 
 # set a few global matplotlib plotting parameters
 pl.rcParams['legend.frameon'] = 'False'
@@ -75,16 +78,17 @@ def find_ml_params_all_lm(quantiles=NR_QUANTILES,nr_conf_bounds=2,data=DATA):
     # computes mle of params using a local (fast) optimization algorithm
     return optimize.fmin(compute_gof_all,params_est)
 
-def find_ml_params_word(quantiles=NR_QUANTILES,remknow=False,data=DATA):
+def find_ml_params_word(word,quantiles=NR_QUANTILES,remknow=False,data=DATA):
     """
     computes MLE of params using a local (fast) and unconstrained optimization
     algorithm. Each RT distribution (i.e., for each judgment category and
     confidence level) is represented using the number of quantiles specified by
     the 'quantiles' parameter.
     """
-    obj_func = lambda x:compute_gof_word(x,params_est,quantiles,data);
+    word_data = filter_word_data(word,data);
+    obj_func = lambda x:compute_gof_word(x,params_est,quantiles,remknow,word_data);
     # computes mle of params using a local (fast) optimization algorithm
-    return optimize.fmin(obj_func,params_est[1]);
+    return optimize.fminbound(obj_func,-20,20);
 
 def compute_gof_all(model_params,quantiles=NR_QUANTILES,remknow=True,data=DATA):
     """
@@ -120,7 +124,7 @@ def compute_gof_word(mu,model_params,quantiles=NR_QUANTILES,remknow=False,data=D
     """
     computes the overall goodness-of-fit of the model defined by model_params.
     This is the sum of the NLL or chi-square statistics for the distribution
-    of responses to both the old and new words.
+    of responses to a particular target (old) word.
     """
     # unpack the model parameters
     c,mu_old,d,mu_new,tc_bound,z0,deltaT,t_offset = model_params;
@@ -512,3 +516,14 @@ def plot_comparison(model_params,nr_conf_bounds=2):
     pl.axis([0,6,0,0.7]);
     pl.title('RT Distributions for Old Words');
     pl.xlabel('Reaction time (sec.)');
+    
+def compute_target_word_rates():
+    """
+    computes individual rate parameters (mu) for each of the target words.
+    """
+    word_file = open(data_path+'target_list.txt');
+    words = word_file.read().split('\n');
+    word_file.close();
+    
+    word_rates = [find_ml_params_word(word) for word in words];
+    return zip(words,word_rates);

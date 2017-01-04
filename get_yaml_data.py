@@ -70,30 +70,28 @@ def reformat_revised_data():
     db['empirical_results'] = aggregated_data;
     db.close();
 
-def get_word_data(word):
+def filter_word_data(word,data):
     """
     Computes aggregate classification/confidence data for a given target word.
     
-    Args: a string representing the target word.
+    Args: a string 'word' representing the target word and an ERStruct 'data'
+    representing the unfiltered trial data.
     
-    Returns: a dictionary representing the aggregate data.
+    Returns: an ERStruct (named tuple) representing the trial data for the
+    target word.
     """
     word = word.upper();
-    # open yaml file
-    ifile = open(YAML_FILENAME,'r');
-    # read in data string
-    filestr = ifile.read();
-    # close file
-    ifile.close();
-    # parse data string into object (list of dicts)
-    all_data = yaml.load(filestr);
-    # select only the subset that matches the desired word
-    word_trials = [el for el in all_data if el['target']==word];
-    # compute aggregated results
-    word_data = compute_aggregate_results(word_trials);
-    
-    return word_data;
-    
+    filtered_data = [];
+    for category in data:
+        total_trials = len(category.rt);
+        trials = [(category.rt[i],category.conf[i],category.target[i]) for i in\
+            range(total_trials) if category.target[i]==word];
+        if(len(trials)>0):
+            filtered_category = RTConf(*(array(el) for el in zip(*trials)));
+        else:
+            filtered_category = None;
+        filtered_data.append(filtered_category);
+    return ERStruct(*filtered_data);
 
 def compute_aggregate_results(trial_list):
     """
@@ -134,10 +132,10 @@ def compute_aggregate_results(trial_list):
     # convert tuple lists to rt & confidence structures
     rem_hit = RTConf(*(array(el) for el in zip(*rem_hit_list)));
     know_hit = RTConf(*(array(el) for el in zip(*know_hit_list)));
+    miss = RTConf(*(array(el) for el in zip(*miss_list)));
     rem_fa = RTConf(*(array(el) for el in zip(*rem_fa_list)));
     know_fa = RTConf(*(array(el) for el in zip(*know_fa_list)));
     CR = RTConf(*(array(el) for el in zip(*CR_list)));
-    miss = RTConf(*(array(el) for el in zip(*miss_list)));
     
     res = ERStruct(know_hit,rem_hit,know_fa,rem_fa,CR,miss);
     
