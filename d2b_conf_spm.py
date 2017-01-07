@@ -8,7 +8,10 @@ from scipy import stats
 from scipy import optimize
 # local imports
 import fftw_test as fftw
-from multinomial_funcs import multinom_loglike,chi_square_gof
+from neha.multinomial_funcs import multinom_loglike,chi_square_gof
+import neha.get_yaml_data
+reload(neha.get_yaml_data)
+from neha.get_yaml_data import filter_word_data;
 
 # set a few global matplotlib plotting parameters
 pl.rcParams['legend.frameon'] = 'False'
@@ -24,14 +27,7 @@ data_path = 'neha/data/'; # this is the base path for the data files
 # Read in new Vincentized RT data
 db = shelve.open(data_path+'neha_data.dat','r');
 DATA = db['empirical_results'];
-# rem_hit = db['rem_hit'];
-# know_hit = db['know_hit'];
-# rem_fa = db['rem_fa'];
-# know_fa = db['know_fa'];
-# CR = db['CR'];
-# miss = db['miss'];
 db.close();
-
  
 INF_PROXY   = 10; # a value used to provide very large but finite bounds for mvn integration
 EPS         = 1e-10 # a very small value (used for numerical stability)
@@ -82,15 +78,17 @@ def find_ml_params_all_lm(quantiles=NR_QUANTILES,nr_conf_bounds=2,data=DATA):
     # computes mle of params using a local (fast) optimization algorithm
     return optimize.fmin(compute_gof_all,params_est)
 
-def find_ml_params_word(quantiles=NR_QUANTILES,nr_conf_bounds=2,data=DATA):
+def find_ml_params_word(word,quantiles=NR_QUANTILES,remknow=False,data=DATA):
     """
     computes MLE of params using a local (fast) and unconstrained optimization
     algorithm. Each RT distribution (i.e., for each judgment category and
     confidence level) is represented using the number of quantiles specified by
     the 'quantiles' parameter.
     """
+    word_data = filter_word_data(word,data);
+    obj_func = lambda x:compute_gof_word(x,params_est,quantiles,remknow,word_data);
     # computes mle of params using a local (fast) optimization algorithm
-    return optimize.fmin(compute_gof_word,params_est)
+    return optimize.fminbound(obj_func,-20,20);
 
 def compute_gof_all(model_params,quantiles=NR_QUANTILES,remknow=True,data=DATA):
     """
@@ -122,15 +120,15 @@ def compute_gof_all(model_params,quantiles=NR_QUANTILES,remknow=True,data=DATA):
             + compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
     return res;
 
-def compute_gof_word(model_params,quantiles=NR_QUANTILES,remknow=True,data=DATA):
+def compute_gof_word(mu,model_params,quantiles=NR_QUANTILES,remknow=False,data=DATA):
     """
     computes the overall goodness-of-fit of the model defined by model_params.
     This is the sum of the NLL or chi-square statistics for the distribution
-    of responses to both the old and new words.
+    of responses to a particular target (old) word.
     """
     # unpack the model parameters
-    c,mu_old,d,tc_bound,z0,deltaT,t_offset = model_params;
-    params_est_old = [[c,0],mu_old,d,tc_bound,z0,deltaT,t_offset];
+    c,mu_old,d,mu_new,tc_bound,z0,deltaT,t_offset = model_params;
+    params_est_old = [[c,0],mu,d,tc_bound,z0,deltaT,t_offset];
     if(remknow):
         # computes gof using separate distributions for remember vs. know.
         old_data = [data.rem_hit.rt,data.know_hit.rt,data.miss.rt,data.rem_hit.conf,data.know_hit.conf];
@@ -518,3 +516,14 @@ def plot_comparison(model_params,nr_conf_bounds=2):
     pl.axis([0,6,0,0.7]);
     pl.title('RT Distributions for Old Words');
     pl.xlabel('Reaction time (sec.)');
+    
+def compute_target_word_rates():
+    """
+    computes individual rate parameters (mu) for each of the target words.
+    """
+    word_file = open(data_path+'target_list.txt');
+    words = word_file.read().split('\n');
+    word_file.close();
+    
+    word_rates = [find_ml_params_word(word) for word in words];
+    return zip(words,word_rates);
