@@ -5,6 +5,7 @@ from scipy import stats
 from scipy import optimize
 import fftw_test as fftw
 from multinomial_funcs import multinom_loglike,chi_square_gof
+from simpleaxis import simpleaxis
 
 # set a few global matplotlib plotting parameters
 pl.rcParams['legend.frameon'] = 'False'
@@ -17,15 +18,15 @@ data_path = 'neha/data/'; # this is the base path for the data files
 # the reason to do this first is that, in order to be efficient,
 # we don't want to represent any more of the time axis than we have to.
 
-# Read in new Vincentized RT data
-db = shelve.open(data_path+'neha_data.dat','r');
-rem_hit = db['rem_hit'];
-know_hit = db['know_hit'];
-rem_fa = db['rem_fa'];
-know_fa = db['know_fa'];
-CR = db['CR'];
-miss = db['miss'];
-db.close();
+# # Read in new Vincentized RT data
+# db = shelve.open(data_path+'neha_data.dat','r');
+# rem_hit = db['rem_hit'];
+# know_hit = db['know_hit'];
+# rem_fa = db['rem_fa'];
+# know_fa = db['know_fa'];
+# CR = db['CR'];
+# miss = db['miss'];
+# db.close();
 
  
 INF_PROXY   = 10; # a value used to provide very large but finite bounds for mvn integration
@@ -117,10 +118,12 @@ def plot_schematic(model_params):
     #pos_deltaT = stats.norm.rvs(mu_old*deltaT,sigma_deltaT);
     #final_pos = cross_pos+pos_deltaT;
     # compute the rate trendline for old words
-    pos_avg = t*mu_old+z0;
-    pos_avg_n = t*mu_new+z0;
+    pos_avg = (t-t_offset)*mu_old+z0;
+    pos_avg_n = (t-t_offset)*mu_new+z0;
+    pos_avg[:to_idx] = z0;
+    pos_avg_n[:to_idx] = z0;
     # compute SD as a function of time
-    pos_sd = pl.sqrt(2*d*t);
+    pos_sd = pl.sqrt(2*d*(t-t_offset));
     
     # now do the plotting
     pl.figure();
@@ -140,9 +143,12 @@ def plot_schematic(model_params):
     # 6. plot the region before evidence starts accumulating
     pl.vlines([t_offset],-1.5,1.5,linestyles='dotted',color='k');
     #pl.fill_between([0,t_offset],[-1.5,-1.5],[1.5,1.5],color='k',alpha=0.2);
+    pl.yticks([-1,0,1]);
+    pl.xticks(pl.arange(0,9,2));
     pl.axis([-0.1,8,-1.5,1.5]);
     pl.xlabel('Time (sec.)');
     pl.ylabel('Evidence');
+    simpleaxis(pl.gca());
     pl.show();
     
     filename = 'neha/d2b_schematic.png';
