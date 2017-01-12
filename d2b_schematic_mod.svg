@@ -18,8 +18,8 @@
    inkscape:version="0.91 r13725"
    sodipodi:docname="d2b_schematic_mod.svg"
    inkscape:export-filename="C:\Users\melchi\Documents\Python\neha\d2b_schematic_mod.png"
-   inkscape:export-xdpi="199.96422"
-   inkscape:export-ydpi="199.96422">
+   inkscape:export-xdpi="200"
+   inkscape:export-ydpi="200">
   <metadata
      id="metadata470">
     <rdf:RDF>
@@ -41,16 +41,16 @@
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
      inkscape:window-width="1920"
-     inkscape:window-height="1028"
+     inkscape:window-height="1058"
      id="namedview468"
      showgrid="false"
      inkscape:zoom="1.2878846"
-     inkscape:cx="-6.7467576"
+     inkscape:cx="-122.82859"
      inkscape:cy="239.02337"
      inkscape:window-x="-8"
      inkscape:window-y="-8"
      inkscape:window-maximized="1"
-     inkscape:current-layer="g49">
+     inkscape:current-layer="axes_1">
     <inkscape:grid
        type="xygrid"
        id="grid4859" />
@@ -707,17 +707,17 @@
       <text
          xml:space="preserve"
          style="font-style:normal;font-weight:normal;font-size:18px;line-height:125%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:10;stroke-opacity:1"
-         x="236.39995"
-         y="61.124992"
+         x="239.59996"
+         y="62.724991"
          id="text4654-3-0-7"
          sodipodi:linespacing="125%"><tspan
            sodipodi:role="line"
            style="font-style:italic;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Arial;-inkscape-font-specification:'Arial Italic';fill:#000000;fill-opacity:1;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:10"
-           x="236.39995"
-           y="61.124992"
-           id="tspan4686-8-9">δ<tspan
+           x="239.59996"
+           y="62.724991"
+           id="tspan4686-8-9">λ<tspan
    style="font-size:51.99999809%;baseline-shift:sub;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:10"
-   id="tspan3513">t</tspan></tspan></text>
+   id="tspan3513" /></tspan></text>
       <text
          xml:space="preserve"
          style="font-style:italic;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:18px;line-height:125%;font-family:Arial;-inkscape-font-specification:'Arial Italic';text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:10;stroke-opacity:1"
