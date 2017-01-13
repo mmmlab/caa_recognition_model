@@ -4,7 +4,6 @@
 *.pyc
 *.py~
 *.jpg
-*.png
 *.mat
 *.pyd
 *.obj
