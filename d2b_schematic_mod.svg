@@ -44,10 +44,10 @@
      inkscape:window-height="1058"
      id="namedview468"
      showgrid="false"
-     inkscape:zoom="1.2878846"
-     inkscape:cx="-122.82859"
-     inkscape:cy="239.02337"
-     inkscape:window-x="-8"
+     inkscape:zoom="1.8578005"
+     inkscape:cx="316.25"
+     inkscape:cy="244.375"
+     inkscape:window-x="1912"
      inkscape:window-y="-8"
      inkscape:window-maximized="1"
      inkscape:current-layer="axes_1">
@@ -639,14 +639,16 @@
          x="36.661011"
          y="197.31688"
          id="text4654-6"
-         sodipodi:linespacing="125%"><tspan
+         sodipodi:linespacing="125%"
+         inkscape:export-xdpi="200"
+         inkscape:export-ydpi="200"><tspan
            sodipodi:role="line"
            id="tspan4656-4"
            style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Arial;-inkscape-font-specification:Arial;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:10"
            x="36.661011"
            y="197.31688"><tspan
              style="font-style:italic;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Arial;-inkscape-font-specification:'Arial Italic';stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:10"
-             id="tspan4660-2">z</tspan><tspan
+             id="tspan4660-2">x</tspan><tspan
              style="font-size:9.35999966px;baseline-shift:sub;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:10"
              id="tspan4658-52">0</tspan></tspan></text>
       <text

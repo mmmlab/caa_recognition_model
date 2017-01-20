@@ -22,8 +22,6 @@
 *.filters
 *.lastbuildstate
 *.opensdf
-*.png
-*.jpg
 ipch
 plots
 simulated_data

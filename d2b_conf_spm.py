@@ -524,7 +524,13 @@ def plot_comparison(model_params,nr_conf_bounds=2,rk=True):
     pl.title('RT Distributions for Target Words');
     pl.xlabel('Reaction time (sec.)');
     pl.ylabel('p(RT,judgment)');
-    pl.legend(curves,['new','old, conf=2','old, conf=1','old, conf=0'],loc='best')
+    if(rk):
+        pl.legend(curves,['new','rem, conf=2','know, conf=2','rem, conf=1',\
+                  'know, conf=1','rem, conf=0','know, conf=0'],loc='best',\
+                  prop={'size':'small'})
+    else:
+        pl.legend(curves,['new','old, conf=2','old, conf=1','old, conf=0'],\
+                  loc='best',prop={'size':'small'})
     
     # plot comparison for 'new' words
     pl.subplot(1,2,2);
