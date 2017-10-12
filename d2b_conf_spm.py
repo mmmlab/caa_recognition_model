@@ -92,7 +92,8 @@ def find_ml_params_word(word,quantiles=NR_QUANTILES,remknow=False,data=DATA):
     # computes mle of params using a local (fast) optimization algorithm
     return optimize.fminbound(obj_func,-20,20);
 
-def compute_gof_all(model_params,quantiles=NR_QUANTILES,remknow=True,data=DATA,use_chisq=True):
+def compute_gof_all(model_params,quantiles=NR_QUANTILES,remknow=True,data=DATA,\
+                    use_chisq=True,use_rk_hack=False):
     """
     computes the overall goodness-of-fit of the model defined by model_params.
     This is the sum of the NLL or chi-square statistics for the distribution
@@ -109,8 +110,10 @@ def compute_gof_all(model_params,quantiles=NR_QUANTILES,remknow=True,data=DATA,u
         old_data = [data.rem_hit.rt,data.know_hit.rt,data.miss.rt,data.rem_hit.conf,data.know_hit.conf];
         new_data = [data.rem_fa.rt,data.know_fa.rt,data.CR.rt,data.rem_fa.conf,data.know_fa.conf];
         # compute the combined goodness-of-fit
-        res = compute_model_gof_rk(params_est_old,*old_data,nr_quantiles=quantiles,use_chisq=use_chisq)+ \
-        compute_model_gof_rk(params_est_new,*new_data,nr_quantiles=quantiles,use_chisq=use_chisq);
+        res = compute_model_gof_rk(params_est_old,*old_data,nr_quantiles=quantiles,\
+                                   use_chisq=use_chisq,use_rk_hack=use_rk_hack)\
+            + compute_model_gof_rk(params_est_new,*new_data,nr_quantiles=quantiles,\
+                                   use_chisq=use_chisq,use_rk_hack=use_rk_hack);
     else:
         # computes gof using concatenated remember and know responses
         old_data = [pl.hstack([data.rem_hit.rt,data.know_hit.rt]),
@@ -180,7 +183,8 @@ def compute_model_gof(model_params,old_RTs,new_RTs,old_conf,nr_quantiles,use_chi
     else: # use NLL
         return -multinom_loglike(x,N,p);
     
-def compute_model_gof_rk(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_conf,nr_quantiles,use_chisq=True):
+def compute_model_gof_rk(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_conf,\
+                         nr_quantiles,use_chisq=True,use_rk_hack=False):
     """
     computes the goodness-of-fit of the model defined by model_params to the
     observed data for one of the word categories (remember, know, or new).
@@ -213,10 +217,25 @@ def compute_model_gof_rk(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_con
     new_freqs = -pl.diff([pl.sum(new_RTs>q) for q in new_quantiles]+[0]);
     x = pl.hstack([rem_freqs.flatten(),know_freqs.flatten(),new_freqs]);
     
+    #########################
+    # compute the empirical rem/know probabilities per confidence level
+    # this is for Arnold's suggested hack
+    rc_freqs = rem_freqs.sum(1)[:,None];
+    kc_freqs = know_freqs.sum(1)[:,None];
+    total_ec = pl.double(rc_freqs+kc_freqs);
+    p_rem_ec = rc_freqs/total_ec;
+    p_know_ec = 1-p_rem_ec;
+    #########################
+    
     # compute p, the probability associated with each category in the model
     p_old = p_o[:,None]*pl.ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
-    p_rem = p_old*p_rem_e;
-    p_know = p_old*p_know_e;
+    if(use_rk_hack):
+        p_rem = p_old*p_rem_ec;
+        p_know = p_old*p_know_ec;
+    else:
+        p_rem = p_old*p_rem_e;
+        p_know = p_old*p_know_e;
+    
     p_new = p_n*pl.ones(nr_quantiles)/float(nr_quantiles);
     p = pl.hstack([p_rem.flatten(),p_know.flatten(),p_new]);
     if(use_chisq):
@@ -418,7 +437,7 @@ def predicted_proportions_sim(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0):
 ## Plotting functions
 ##########################################################################################
 
-def emp_v_prediction(model_params,nr_conf=2,data=DATA,rk=True):
+def emp_v_prediction(model_params,nr_conf=2,data=DATA,rk=True,rk_hack=False):
     conf,mu_old,d_old,mu_new,tc_bound,z0,deltaT,t_offset = model_params;
     c = [conf,0]
     params_est_old = [c,mu_old,d_old,tc_bound,z0,deltaT,t_offset];
@@ -454,9 +473,23 @@ def emp_v_prediction(model_params,nr_conf=2,data=DATA,rk=True):
         
         old_data = [hr_rts,hk_rts,data.miss.rt];
         new_data = [fr_rts,fk_rts,data.CR.rt];
-        
-        pp_old = [pp_old[0]*p_rem_e,pp_old[0]*p_know_e,pp_old[1]];
-        pp_new = [pp_new[0]*p_rem_e,pp_new[0]*p_know_e,pp_new[1]];
+        if(rk_hack):
+            #########################
+            # compute the empirical rem/know probabilities per confidence level
+            # this is for Arnold's suggested hack
+            rc_freqs = pl.array([len(el) for el in hr_rts])[:,None]\
+                     + pl.array([len(el) for el in fr_rts])[:,None];
+            kc_freqs = pl.array([len(el) for el in hk_rts])[:,None]\
+                     + pl.array([len(el) for el in fk_rts])[:,None];
+            total_ec = pl.double(rc_freqs+kc_freqs);
+            p_rem_ec = rc_freqs/total_ec;
+            p_know_ec = 1-p_rem_ec;
+            #########################
+            pp_old = [pp_old[0]*p_rem_ec,pp_old[0]*p_know_ec,pp_old[1]];
+            pp_new = [pp_new[0]*p_rem_ec,pp_new[0]*p_know_ec,pp_new[1]];
+        else:
+            pp_old = [pp_old[0]*p_rem_e,pp_old[0]*p_know_e,pp_old[1]];
+            pp_new = [pp_new[0]*p_rem_e,pp_new[0]*p_know_e,pp_new[1]];
     else:
         h_rts = [pl.hstack((rem,know)) for rem,know in zip(hr_rts,hk_rts)];
         f_rts = [pl.hstack((rem,know)) for rem,know in zip(fr_rts,fk_rts)];
@@ -487,7 +520,7 @@ def plot_evp_pair(p_dist,e_dist,e_total,col='g'):
     pl.show();
     return curve;
     
-def plot_comparison(model_params,nr_conf_bounds=2,rk=True):
+def plot_comparison(model_params,nr_conf_bounds=2,rk=True,rk_hack=False):
     """
     makes a set of two plots comparing the predictions of a model parameterized
     by model_params to the observed reaction times and confidence judgments.
@@ -496,7 +529,8 @@ def plot_comparison(model_params,nr_conf_bounds=2,rk=True):
     (lure) words.
     """
     nr_conf = nr_conf_bounds+1;
-    old_data,new_data,pp_old,pp_new,n_old,n_new = emp_v_prediction(model_params,nr_conf_bounds,rk=rk);
+    old_data,new_data,pp_old,pp_new,n_old,n_new = emp_v_prediction(model_params,\
+                                                nr_conf_bounds,rk=rk,rk_hack=rk_hack);
     #nr_conf=len(pp_old[0]);
     colors = ['k','r','b','g','c']
     kcolors = ['#ff8080','#8080ff','#80c080'];

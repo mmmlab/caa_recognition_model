@@ -9,6 +9,7 @@ from scipy import optimize
 # local imports
 import fftw_test as fftw
 from multinomial_funcs import multinom_loglike,chi_square_gof
+from simpleaxis import simpleaxis
 
 data_path = 'neha/data/'; # this is the base path for the data files
 
@@ -78,7 +79,7 @@ def find_ml_params_all_lm(quantiles=NR_QUANTILES,spm=False):
     else:
         return optimize.fmin(obj_func,params_est);
 
-def compute_gof_all(model_params,quantiles=NR_QUANTILES,spm=False,data=DATA):
+def compute_gof_all(model_params,quantiles=NR_QUANTILES,spm=False,data=DATA,use_chisq=True):
     """
     computes the overall goodness-of-fit of the model defined by model_params.
     This is the sum of the NLL or chi-square statistics for the distribution
@@ -97,11 +98,11 @@ def compute_gof_all(model_params,quantiles=NR_QUANTILES,spm=False,data=DATA):
     old_data = [data.rem_hit.rt,data.know_hit.rt,data.miss.rt,data.rem_hit.conf,data.know_hit.conf];
     new_data = [data.rem_fa.rt,data.know_fa.rt,data.CR.rt,data.rem_fa.conf,data.know_fa.conf];
     # compute the combined goodness-of-fit
-    res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles)+ \
-    compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles);
+    res = compute_model_gof(params_est_old,*old_data,nr_quantiles=quantiles,use_chisq=use_chisq)\
+        + compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles,use_chisq=use_chisq);
     return res;
 
-def compute_model_gof(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_conf,nr_quantiles=NR_QUANTILES):
+def compute_model_gof(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_conf,nr_quantiles=NR_QUANTILES,use_chisq=True):
     # computes the chi square fit of the model to the data
     # compute N, the total number of trials
     N = len(rem_RTs)+len(know_RTs)+len(new_RTs);
@@ -127,7 +128,10 @@ def compute_model_gof(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_conf,n
     p_know = p_k[:,None]*pl.ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
     p_new = p_n*pl.ones(nr_quantiles)/float(nr_quantiles);
     p = pl.hstack([p_rem.flatten(),p_know.flatten(),p_new]);
-    return chi_square_gof(x,N,p)
+    if(use_chisq):
+        return chi_square_gof(x,N,p);
+    else: # use NLL
+        return -multinom_loglike(x,N,p);
 
 def compute_model_quantiles(params,nr_quantiles=NR_QUANTILES):
     # This function is set up to deal with multiple confidence levels
@@ -614,55 +618,126 @@ def predicted_proportions_NC(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_ff
     
     return p_remember,p_know,p_new,t;
 
-def emp_v_prediction(model_params):
-    c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT = model_params;
-    mu_f0 = mu_r0 =0;
-    params_est_old = [c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT];
-    params_est_new = [c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT];
-    nr_conf = 1;#len(c);
-    # adjust the number of confidence levels in the data to match number in model
-    rhconf = pl.clip(data.rem_hit.conf,0,nr_conf); khconf = pl.clip(data.know_hit.conf,0,nr_conf);
-    rfconf = pl.clip(data.rem_fa.conf,0,nr_conf); kfconf = pl.clip(data.know_fa.conf,0,nr_conf);
-    rh_rts = [data.rem_hit[rhconf==i,0] for i in pl.unique(rhconf)];
-    kh_rts = [data.know_hit[khconf==i,0] for i in pl.unique(khconf)];
-    rf_rts = [data.rem_fa[rfconf==i,0] for i in pl.unique(rfconf)];
-    kf_rts = [data.know_fa[kfconf==i,0] for i in pl.unique(kfconf)];
+################################################################################
+## Plotting functions
+################################################################################
 
-    old_data = [rh_rts,kh_rts,data.miss.rt];
-    new_data = [rf_rts,kf_rts,data.CR.rt];
+def emp_v_prediction(model_params,data=DATA):
+    conf,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,mu_f0,mu_r0,deltaT,t_offset = model_params;
+    #mu_f0 = mu_r0 =0;
+    c = [conf,0];
+    params_est_old = [c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,t_offset];
+    params_est_new = [c,mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT,t_offset];
     
-    n_old = len(data.rem_hit)+len(data.know_hit)+len(data.miss);
-    n_new = len(data.rem_fa)+len(data.know_fa)+len(data.CR);
+    nr_conf = len(c);
+    # adjust the number of confidence levels in the data to match number in model
+    hr_conf = pl.clip(data.rem_hit.conf,0,nr_conf);
+    hk_conf = pl.clip(data.know_hit.conf,0,nr_conf);
+    fr_conf = pl.clip(data.rem_fa.conf,0,nr_conf);
+    fk_conf = pl.clip(data.know_fa.conf,0,nr_conf);
+    
+    # flip the arrays below so that the confidence levels appear in descending order
+    hr_rts = [data.rem_hit.rt[hr_conf==i] for i in reversed(pl.unique(hr_conf))];
+    hk_rts = [data.know_hit.rt[hk_conf==i] for i in reversed(pl.unique(hk_conf))];
+    fr_rts = [data.rem_fa.rt[fr_conf==i] for i in reversed(pl.unique(fr_conf))];
+    fk_rts = [data.know_fa.rt[fk_conf==i] for i in reversed(pl.unique(fk_conf))];
+    
+    n_old = len(hr_conf)+len(hk_conf)+len(data.miss.rt);
+    n_new = len(fr_conf)+len(fk_conf)+len(data.CR.rt);
     
     # compute predicted proportions
-    pp_old = predicted_proportions(*params_est_old);
-    pp_new = predicted_proportions(*params_est_new);
+    pp_old = predicted_proportions(*params_est_old)[:-1];
+    pp_new = predicted_proportions(*params_est_new)[:-1];
+    
+    old_data = [hr_rts,hk_rts,data.miss.rt];
+    new_data = [fr_rts,fk_rts,data.CR.rt];
     
     return old_data,new_data,pp_old,pp_new,n_old,n_new
     
 # plotting the data
-def plot_comparison(p_dist,e_dist,e_total):
-    
+def plot_evp_pair(p_dist,e_dist,e_total,col='g'):
+    """
+    makes a plot comparing the model-generated RT distribution p_dist to an
+    the distribution of a sample of empirical (observed) reaction times e_dist.
+    e_total represents the size of the sample.
+    """
     # plot the histogram for observed data
-    #hist(data.rem_hit[:,0],bins=40,range = [0,10],histtype='step',color='0.5',lw=2,normed=True);
-    
-    # compute empirical p(remember|old)
-    p_rem_total = len(e_dist)*1.0/e_total;
-    # compute density histogram
-    hd,edges = pl.histogram(data.rem_hit.rt,bins=40,range=[0,10],density=True);
+    t = pl.linspace(DELTA_T,MAX_T,NR_TSTEPS); # this is the time axis
+    # compute the prior distribution for the response category
+    p_cat = len(e_dist)*1.0/e_total;
+    ## compute density histogram
+    hd,edges = pl.histogram(e_dist,bins=40,range=[0,10],density=True);
     hist_density = pl.hstack([[0],hd]);
-    pl.step(edges,hist_density*p_rem_total,color='0.5',lw=2);
-    # plot the PDF for observed data
-    rem_old = stats.kde.gaussian_kde(data.rem_hit.rt);
-    pl.plot(t,rem_old(t)*p_rem_total,'r',lw=2)
-    # generate the raster plot of raw RTs
-    rmin = 0;
-    rmax = max(rem_old(t))*0.1;
-    pl.vlines(data.rem_hit.rt,rmin,rmax,color='k',alpha=0.15);
-    # plot the PDF for predicted data
+    pl.plot(edges,hist_density*p_cat,color=col,lw=2,ls='--',drawstyle='steps');
     # note: the division by DELTA_T below is to make sure that you are plotting
     # probability densities (rather than probability masses)
-    pl.plot(t,p_remember.sum(0)/DELTA_T,'g',lw=2)
-    pl.title('Remember Hits');
+    curve = pl.plot(t,p_dist/DELTA_T,col,lw=2)
     pl.axis([0,t.max(),None,None])
     pl.show();
+    return curve;
+    
+def plot_comparison(model_params,nr_conf_bounds=2):
+    """
+    makes a set of two plots comparing the predictions of a model parameterized
+    by model_params to the observed reaction times and confidence judgments.
+    The left panel represents the distribution of judgments and RTs for old
+    (target) words, while the right panel represents the distribution for new
+    (lure) words.
+    """
+    nr_conf = nr_conf_bounds+1;
+    old_data,new_data,pp_old,pp_new,n_old,n_new = emp_v_prediction(model_params);
+    #nr_conf=len(pp_old[0]);
+    colors = ['k','r','b','g','c']
+    kcolors = ['#ff8080','#8080ff','#80c080'];
+    # plot comparison for 'old' words
+    pl.figure(figsize=(12,5));
+    pl.subplot(1,2,1);
+    curves = [];
+    c_idx = 0;
+    kc_idx = 0;
+    # 1. plot misses
+    curve, = plot_evp_pair(pp_old[-1],old_data[-1],n_old,colors[c_idx]);
+    curves.append(curve);
+    c_idx+=1;
+    # 2. plot hits
+    for conf in range(nr_conf):
+        curve, = plot_evp_pair(pp_old[0][conf],old_data[0][conf],n_old,colors[c_idx]);
+        curves.append(curve);
+        c_idx+=1;
+        # plot "know" hits
+        curve, = plot_evp_pair(pp_old[1][conf],old_data[1][conf],n_old,kcolors[kc_idx]);
+        curves.append(curve);
+        kc_idx+=1;
+    pl.axis([0,6,0,0.7]);
+    simpleaxis(pl.gca());
+    pl.title('RT Distributions for Target Words');
+    pl.xlabel('Reaction time (sec.)');
+    pl.ylabel('p(RT,judgment)');
+
+    pl.legend(curves,['new','rem, conf=2','know, conf=2','rem, conf=1',\
+              'know, conf=1','rem, conf=0','know, conf=0'],loc='best',\
+              prop={'size':'small'})
+
+    
+    # plot comparison for 'new' words
+    pl.subplot(1,2,2);
+    curves = [];
+    c_idx = 0;
+    kc_idx = 0;
+    # 1. plot misses
+    curve, = plot_evp_pair(pp_new[-1],new_data[-1],n_new,colors[c_idx]);
+    curves.append(curve);
+    c_idx+=1;
+    # 2. plot hits
+    for conf in range(nr_conf):
+        curve, = plot_evp_pair(pp_new[0][conf],new_data[0][conf],n_new,colors[c_idx]);
+        curves.append(curve);
+        c_idx+=1;
+        # plot "know" hits
+        curve, = plot_evp_pair(pp_new[1][conf],new_data[1][conf],n_new,kcolors[kc_idx]);
+        curves.append(curve);
+        kc_idx+=1;
+    pl.axis([0,6,0,0.7]);
+    simpleaxis(pl.gca());
+    pl.title('RT Distributions for Lure Words');
+    pl.xlabel('Reaction time (sec.)');
