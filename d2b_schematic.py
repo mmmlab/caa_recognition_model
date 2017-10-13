@@ -151,7 +151,7 @@ def plot_schematic(model_params):
     simpleaxis(pl.gca());
     pl.show();
     
-    filename = 'neha/d2b_schematic.png';
+    filename = 'neha/plots/d2b_schematic.png';
     pl.savefig(filename,dpi=100,bbox_inches='tight',pad_inches=0,transparent=True);
     pl.savefig(filename.replace('png','svg'),dpi=100,bbox_inches='tight',\
                             pad_inches=0,transparent=True);
