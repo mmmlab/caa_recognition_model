@@ -13,7 +13,7 @@ Summary descriptions of the major functions will be added to this document at a
 future date. Note, however, that all major functions are well documented and 
 include well-formatted docstrings, so that they can be queried using Python's
 built-in `help` function. An overview of the model itself appears in 
-NotesOnD2BModel.md.
+[NotesOnD2BModel.md](NotesOnD2BModel.md).
 
 - Experimental data (in various formats) are located in the `data` folder.
 - Various plots (of data, model predictions, and model schematics) are located
