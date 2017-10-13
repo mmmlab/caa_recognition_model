@@ -5,14 +5,13 @@ from scipy import stats
 from scipy import optimize
 import fftw_test as fftw
 from multinomial_funcs import multinom_loglike,chi_square_gof
-from simpleaxis import simpleaxis
 
 # set a few global matplotlib plotting parameters
 pl.rcParams['legend.frameon'] = 'False'
 pl.rcParams['font.family'] = 'Arial'
 pl.rcParams['font.size'] = 16.0
 
-data_path = 'neha/data/'; # this is the base path for the data files
+data_path = 'caa_model/data/'; # this is the base path for the data files
 
 ## Start by reading in the data.
 # the reason to do this first is that, in order to be efficient,
@@ -44,6 +43,13 @@ params_est_old = [0.9169,0.319,0.3888,-0.265,0.0505,-0.1198,0.4968,0.5799]; # fi
 params_est = [0.9452,0.3236,0.4126,-0.2745,0.0486,-0.124,0.5001,0.5527]; # fitted w/ 10 quantiles, chisq = 440
 
 params_est = [0.8,0.3236,0.1,-0.2745,0.1,-0.124,0.5001,0.5527]; # demo values
+
+def simpleaxis(ax):
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.get_xaxis().tick_bottom()
+    ax.get_yaxis().tick_left()
+
 
 # This is a Monte-Carlo simulation approach to approximating the same RT distributions
 # that are computed in predicted_proportions (above). I include it here as a sanity check
@@ -151,7 +157,7 @@ def plot_schematic(model_params):
     simpleaxis(pl.gca());
     pl.show();
     
-    filename = 'neha/plots/d2b_schematic.png';
+    filename = 'caa_model/plots/d2b_schematic.png';
     pl.savefig(filename,dpi=100,bbox_inches='tight',pad_inches=0,transparent=True);
     pl.savefig(filename.replace('png','svg'),dpi=100,bbox_inches='tight',\
                             pad_inches=0,transparent=True);

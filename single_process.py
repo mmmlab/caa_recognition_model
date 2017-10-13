@@ -8,17 +8,16 @@ from scipy import stats
 from scipy import optimize
 # local imports
 import fftw_test as fftw
-from neha.multinomial_funcs import multinom_loglike,chi_square_gof
-import neha.get_yaml_data
-from neha.get_yaml_data import filter_word_data
-from simpleaxis import simpleaxis
+from caa_model.multinomial_funcs import multinom_loglike,chi_square_gof
+import caa_model.get_yaml_data
+from caa_model.get_yaml_data import filter_word_data
 
 # set a few global matplotlib plotting parameters
 pl.rcParams['legend.frameon'] = 'False'
 pl.rcParams['font.family'] = 'Arial'
 pl.rcParams['font.size'] = 16.0
 
-data_path = 'neha/data/'; # this is the base path for the data files
+data_path = 'caa_model/data/'; # this is the base path for the data files
 
 ## Start by reading in the data.
 # the reason to do this first is that, in order to be efficient,
@@ -436,6 +435,13 @@ def predicted_proportions_sim(c,mu_f,d_f,tc_bound,z0,deltaT,t_offset=0):
 ##########################################################################################
 ## Plotting functions
 ##########################################################################################
+
+def simpleaxis(ax):
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.get_xaxis().tick_bottom()
+    ax.get_yaxis().tick_left()
+
 
 def emp_v_prediction(model_params,nr_conf=2,data=DATA,rk=True,rk_hack=False):
     conf,mu_old,d_old,mu_new,tc_bound,z0,deltaT,t_offset = model_params;

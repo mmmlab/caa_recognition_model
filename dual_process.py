@@ -9,9 +9,8 @@ from scipy import optimize
 # local imports
 import fftw_test as fftw
 from multinomial_funcs import multinom_loglike,chi_square_gof
-from simpleaxis import simpleaxis
 
-data_path = 'neha/data/'; # this is the base path for the data files
+data_path = 'caa_model/data/'; # this is the base path for the data files
 
 ## Start by reading in the data.
 # the reason to do this first is that, in order to be efficient,
@@ -621,6 +620,13 @@ def predicted_proportions_NC(mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,use_ff
 ################################################################################
 ## Plotting functions
 ################################################################################
+
+def simpleaxis(ax):
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.get_xaxis().tick_bottom()
+    ax.get_yaxis().tick_left()
+
 
 def emp_v_prediction(model_params,data=DATA):
     conf,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,mu_f0,mu_r0,deltaT,t_offset = model_params;

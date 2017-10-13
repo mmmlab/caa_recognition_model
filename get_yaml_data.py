@@ -7,7 +7,7 @@ from numpy import array
 # third party imports
 import yaml
 
-YAML_FILENAME = 'neha/data/neha_data_revised.yml';
+YAML_FILENAME = 'caa_model/data/neha_data_revised.yml';
 
 # empirical results structure
 ERStruct = namedtuple('ERStruct',['know_hit','rem_hit','know_fa','rem_fa',
@@ -40,11 +40,11 @@ def save_word_lists():
     lure_words = np.unique(lure_words);
     
     
-    target_file = open('neha/data/target_list.txt','w');
+    target_file = open('caa_model/data/target_list.txt','w');
     target_file.write('\n'.join(target_words));
     target_file.close();
     
-    lure_file = open('neha/data/lure_list.txt','w');
+    lure_file = open('caa_model/data/lure_list.txt','w');
     lure_file.write('\n'.join(lure_words));
     lure_file.close();
     
@@ -66,7 +66,7 @@ def reformat_revised_data():
     # compute aggregated results
     aggregated_data = compute_aggregate_results(neha_data);
     # save the reformatted data into a shelve database
-    db = shelve.open('neha/data/neha_data.dat','n');
+    db = shelve.open('caa_model/data/neha_data.dat','n');
     db['empirical_results'] = aggregated_data;
     db.close();
 
