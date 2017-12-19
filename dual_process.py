@@ -1,3 +1,5 @@
+# configure for compatibility with Python 3
+from __future__ import (absolute_import, division, print_function)
 # standard library imports
 import shelve
 from collections import namedtuple
@@ -7,8 +9,8 @@ import numpy
 from scipy import stats
 from scipy import optimize
 # local imports
-import fftw_test as fftw
-from multinomial_funcs import multinom_loglike,chi_square_gof
+from . import fftw_test as fftw
+from .multinomial_funcs import multinom_loglike,chi_square_gof
 
 data_path = 'caa_model/data/'; # this is the base path for the data files
 

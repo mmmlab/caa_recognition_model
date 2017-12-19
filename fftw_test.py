@@ -1,4 +1,4 @@
-from pylab import *
+import pylab as pl
 import pyfftw
 
 
@@ -18,8 +18,8 @@ def fftw_setup(arr,nr_threads=NR_THREADS):
     INPUT_ARRAY = pyfftw.n_byte_align_empty(shape(arr), 16, 'complex128');
 #    INPUT_ARRAY = pyfftw.n_byte_align_empty(shape(arr), 16, 'float64');
     OUTPUT_ARRAY = pyfftw.n_byte_align_empty(shape(arr), 16, 'complex128');
-    INPUT_ARRAY[:] = zeros(shape(arr));
-    OUTPUT_ARRAY[:] = zeros(shape(arr))+0j;
+    INPUT_ARRAY[:] = pl.zeros(shape(arr));
+    OUTPUT_ARRAY[:] = pl.zeros(shape(arr))+0j;
     FFT = pyfftw.FFTW(INPUT_ARRAY, OUTPUT_ARRAY,threads=nr_threads);
     IFFT = pyfftw.FFTW(OUTPUT_ARRAY,INPUT_ARRAY,direction='FFTW_BACKWARD',threads=nr_threads);
     
@@ -27,7 +27,7 @@ def fftw_setup(arr,nr_threads=NR_THREADS):
 def fft(arr):
     INPUT_ARRAY[:] = arr+0j;
 #    INPUT_ARRAY[:] = arr;
-    return array(FFT());
+    return pl.array(FFT());
 
 def ifft(arr):
     OUTPUT_ARRAY[:]=arr;

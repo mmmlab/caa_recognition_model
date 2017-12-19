@@ -1,3 +1,5 @@
+# configure for compatibility with Python 3
+from __future__ import (absolute_import, division, print_function)
 # standard library imports
 import shelve
 from collections import namedtuple

@@ -1,10 +1,15 @@
+# configure for compatibility with Python 3
+from __future__ import (absolute_import, division, print_function)
+# standard library imports
 import shelve
+# scientific library imports
 import pylab as pl
 from pylab import fft,ifft,fftshift,ifftshift
 from scipy import stats
 from scipy import optimize
-import fftw_test as fftw
-from multinomial_funcs import multinom_loglike,chi_square_gof
+# local imports
+from . import fftw_test as fftw
+from .multinomial_funcs import multinom_loglike,chi_square_gof
 
 # set a few global matplotlib plotting parameters
 pl.rcParams['legend.frameon'] = 'False'

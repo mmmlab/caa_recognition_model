@@ -1,3 +1,5 @@
+# configure for compatibility with Python 3
+from __future__ import (absolute_import, division, print_function)
 # standard library imports
 import shelve
 from collections import namedtuple
@@ -7,10 +9,9 @@ from pylab import fft,ifft,fftshift,ifftshift
 from scipy import stats
 from scipy import optimize
 # local imports
-import fftw_test as fftw
-from caa_model.multinomial_funcs import multinom_loglike,chi_square_gof
-import caa_model.get_yaml_data
-from caa_model.get_yaml_data import filter_word_data
+from . import fftw_test as fftw
+from .multinomial_funcs import multinom_loglike,chi_square_gof
+from .get_yaml_data import filter_word_data
 
 # set a few global matplotlib plotting parameters
 pl.rcParams['legend.frameon'] = 'False'
