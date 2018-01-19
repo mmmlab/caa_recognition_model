@@ -125,6 +125,42 @@ def compute_gof_all(model_params,quantiles=NR_QUANTILES,remknow=True,data=DATA,\
             + compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles,use_chisq=use_chisq);
     return res;
 
+def compute_prop_all(model_params,quantiles=NR_QUANTILES,remknow=True,data=DATA,\
+                    use_rk_hack=False):
+    """
+    computes the overall goodness-of-fit of the model defined by model_params.
+    This is the sum of the NLL or chi-square statistics for the distribution
+    of responses to both the old and new words.
+    """
+    # unpack the model parameters
+    c,mu_old,d,mu_new,tc_bound,z0,deltaT,t_offset = model_params;
+    # assemble these into separate parameter vectors for old words (targets)
+    # and new words (lures)
+    params_est_old = [[c,0],mu_old,d,tc_bound,z0,deltaT,t_offset];
+    params_est_new = [[c,0],mu_new,d,tc_bound,z0,deltaT,t_offset];
+    if(remknow):
+        # computes gof using separate distributions for remember vs. know.
+        old_data = [data.rem_hit.rt,data.know_hit.rt,data.miss.rt,data.rem_hit.conf,data.know_hit.conf];
+        new_data = [data.rem_fa.rt,data.know_fa.rt,data.CR.rt,data.rem_fa.conf,data.know_fa.conf];
+        # compute the combined goodness-of-fit
+        p_obs_old, p_pred_old = compute_model_prop_rk(params_est_old,*old_data,nr_quantiles=quantiles,\
+                                   use_rk_hack=use_rk_hack);
+        p_obs_new, p_pred_new = compute_model_prop_rk(params_est_new,*new_data,nr_quantiles=quantiles,\
+                                   use_rk_hack=use_rk_hack);
+    else:
+        # computes gof using concatenated remember and know responses
+        old_data = [pl.hstack([data.rem_hit.rt,data.know_hit.rt]),
+                    data.miss.rt,pl.hstack([data.rem_hit.conf,data.know_hit.conf])];
+        new_data = [pl.hstack([data.rem_fa.rt,data.know_fa.rt]),
+                    data.CR.rt,pl.hstack([data.rem_fa.conf,data.know_fa.conf])];
+        # compute the combined goodness-of-fit
+        p_obs_old, p_pred_old = compute_model_prop(params_est_old,*old_data,nr_quantiles=quantiles);
+        p_obs_new, p_pred_new = compute_model_prop(params_est_new,*new_data,nr_quantiles=quantiles);
+    p_obs = pl.hstack([p_obs_old,p_obs_new]);
+    p_pred = pl.hstack([p_pred_old,p_pred_new]);
+    return p_obs, p_pred;
+
+
 def compute_gof_word(mu,model_params,quantiles=NR_QUANTILES,remknow=False,data=DATA):
     """
     computes the overall goodness-of-fit of the model defined by model_params.
@@ -242,6 +278,96 @@ def compute_model_gof_rk(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_con
         return chi_square_gof(x,N,p);
     else: # use NLL
         return -multinom_loglike(x,N,p);
+
+def compute_model_prop(model_params,old_RTs,new_RTs,old_conf,nr_quantiles):
+    """
+    computes the predicted proportions for the model defined by model_params as well as
+    the observed proportions for one of the word categories (old or new).
+    """
+    # computes the chi square fit of the model to the data
+    # compute N, the total number of trials
+    N = len(old_RTs)+len(new_RTs);
+    # compute x, the observed frequency for each category
+    old_quantiles,new_quantiles,p_o,p_n = compute_model_quantiles(model_params,nr_quantiles);
+    # determine the number of confidence levels being used in the model
+    nr_conf_levels = len(old_quantiles);
+    # adjust the number of confidence levels in the data to match
+    old_conf = pl.clip(old_conf,0,nr_conf_levels-1);
+    ## compute the number of RTs falling into each quantile bin
+    old_freqs = pl.array([-pl.diff([pl.sum(old_RTs[old_conf==i]>q)
+            for q in old_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
+    ## I think this is where the problem was. The confidence levels in the
+    ## model are in descending order, while these (for the empircal data) are
+    ## in ascending order. I'll flip them here
+    old_freqs = pl.flipud(old_freqs);
+    new_freqs = -pl.diff([pl.sum(new_RTs>q) for q in new_quantiles]+[0]);
+    x = pl.hstack([old_freqs.flatten(),new_freqs]);
+    
+    # compute p, the probability associated with each category in the model
+    p_o = p_o[:,None]*pl.ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
+    p_new = p_n*pl.ones(nr_quantiles)/float(nr_quantiles);
+    p = pl.hstack([p_o.flatten(),p_new]);
+    
+    p_pred = p;
+    p_obs = x/N;
+    return p_obs,p_pred;
+    
+def compute_model_prop_rk(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_conf,\
+                         nr_quantiles,use_rk_hack=False):
+    """
+    computes the predicted proportions for the model defined by model_params as well as
+    the observed proportions for one of the word categories (remember, know, or new).
+    """
+    # computes the chi square fit of the model to the data
+    # compute N, the total number of trials
+    N = len(rem_RTs)+len(know_RTs)+len(new_RTs);
+    # compute the empirical probabilities of choosing rem vs. know given an old judgment
+    p_rem_e = float(len(rem_RTs))/(len(rem_RTs)+len(know_RTs));
+    p_know_e = 1-p_rem_e;
+
+    # compute x, the observed frequency for each category
+    old_quantiles,new_quantiles,p_o,p_n = compute_model_quantiles(model_params,nr_quantiles);
+    # determine the number of confidence levels being used in the model
+    nr_conf_levels = len(old_quantiles);
+    # adjust the number of confidence levels in the data to match
+    rem_conf = pl.clip(rem_conf,0,nr_conf_levels-1);
+    know_conf = pl.clip(know_conf,0,nr_conf_levels-1);
+    ## compute the number of RTs falling into each quantile bin
+    rem_freqs = pl.array([-pl.diff([pl.sum(rem_RTs[rem_conf==i]>q) for q in old_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
+    know_freqs = pl.array([-pl.diff([pl.sum(know_RTs[know_conf==i]>q) for q in old_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
+    ## I think this is where the problem was. The confidence levels in the
+    ## model are in descending order, while these (for the empircal data) are
+    ## in ascending order. I'll flip them here
+    rem_freqs = pl.flipud(rem_freqs);
+    know_freqs = pl.flipud(know_freqs);
+    new_freqs = -pl.diff([pl.sum(new_RTs>q) for q in new_quantiles]+[0]);
+    x = pl.hstack([rem_freqs.flatten(),know_freqs.flatten(),new_freqs]);
+    
+    #########################
+    # compute the empirical rem/know probabilities per confidence level
+    # this is for Arnold's suggested hack
+    rc_freqs = rem_freqs.sum(1)[:,None];
+    kc_freqs = know_freqs.sum(1)[:,None];
+    total_ec = pl.double(rc_freqs+kc_freqs);
+    p_rem_ec = rc_freqs/total_ec;
+    p_know_ec = 1-p_rem_ec;
+    #########################
+    
+    # compute p, the probability associated with each category in the model
+    p_old = p_o[:,None]*pl.ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
+    if(use_rk_hack):
+        p_rem = p_old*p_rem_ec;
+        p_know = p_old*p_know_ec;
+    else:
+        p_rem = p_old*p_rem_e;
+        p_know = p_old*p_know_e;
+    
+    p_new = p_n*pl.ones(nr_quantiles)/float(nr_quantiles);
+    p = pl.hstack([p_rem.flatten(),p_know.flatten(),p_new]);
+    
+    p_pred = p;
+    p_obs = x/N;
+    return p_obs,p_pred;
 
 def compute_model_quantiles(params,nr_quantiles):
     """
