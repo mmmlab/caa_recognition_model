@@ -103,6 +103,33 @@ def compute_gof_all(model_params,quantiles=NR_QUANTILES,spm=False,data=DATA,use_
         + compute_model_gof(params_est_new,*new_data,nr_quantiles=quantiles,use_chisq=use_chisq);
     return res;
 
+    
+def compute_prob_all(model_params,quantiles=NR_QUANTILES,spm=False,data=DATA):  
+    """
+    computes the overall goodness-of-fit of the model defined by model_params.
+    This is the sum of the NLL or chi-square statistics for the distribution
+    of responses to both the old and new words.
+    """
+    # unpack the model parameters
+    #c,mu_old,d,mu_new,tc_bound,z0,deltaT,t_offset = model_params;
+    if(spm):
+        c,mu_f,d_f,mu_f0,tc_bound,z0,deltaT,t_offset,r_bound = model_params;
+        mu_r = mu_r0 = 0;
+        d_r = EPS;
+    else:
+        c,mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,mu_r0,mu_f0,deltaT,t_offset = model_params;
+    params_est_old = [[c,0],mu_r,mu_f,d_r,d_f,tc_bound,r_bound,z0,deltaT,t_offset];
+    params_est_new = [[c,0],mu_r0,mu_f0,d_r,d_f,tc_bound,r_bound,z0,deltaT,t_offset];
+    old_data = [data.rem_hit.rt,data.know_hit.rt,data.miss.rt,data.rem_hit.conf,data.know_hit.conf];
+    new_data = [data.rem_fa.rt,data.know_fa.rt,data.CR.rt,data.rem_fa.conf,data.know_fa.conf];
+    # compute the combined goodness-of-fit
+
+    p_obs_old, p_pred_old = compute_model_prop(params_est_old,*old_data,nr_quantiles=quantiles);
+    p_obs_new, p_pred_new = compute_model_prop(params_est_new,*new_data,nr_quantiles=quantiles);
+    p_obs = pl.hstack([p_obs_old,p_obs_new]);
+    p_pred = pl.hstack([p_pred_old,p_pred_new]);
+    return p_obs, p_pred;
+
 def compute_model_gof(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_conf,nr_quantiles=NR_QUANTILES,use_chisq=True):
     # computes the chi square fit of the model to the data
     # compute N, the total number of trials
@@ -133,6 +160,37 @@ def compute_model_gof(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_conf,n
         return chi_square_gof(x,N,p);
     else: # use NLL
         return -multinom_loglike(x,N,p);
+    
+def compute_model_prop(model_params,rem_RTs,know_RTs,new_RTs,rem_conf,know_conf,nr_quantiles=NR_QUANTILES):
+    # computes the chi square fit of the model to the data
+    # compute N, the total number of trials
+    N = len(rem_RTs)+len(know_RTs)+len(new_RTs);
+    # compute x, the observed frequency for each category
+    rem_quantiles,know_quantiles,new_quantiles,p_r,p_k,p_n = compute_model_quantiles(model_params,nr_quantiles);
+    # determine the number of confidence levels being used in the model
+    nr_conf_levels = len(rem_quantiles);
+    # adjust the number of confidence levels in the data to match
+    rem_conf = pl.clip(rem_conf,0,nr_conf_levels-1);
+    know_conf = pl.clip(know_conf,0,nr_conf_levels-1);
+    ## compute the number of RTs falling into each quantile bin
+    rem_freqs = pl.array([-pl.diff([pl.sum(rem_RTs[rem_conf==i]>q) for q in rem_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
+    know_freqs = pl.array([-pl.diff([pl.sum(know_RTs[know_conf==i]>q) for q in know_quantiles[i]]+[0]) for i in range(nr_conf_levels)]);
+    ## Added 11/11/2016 by Melchi
+    ## flip these frequencies so that they represent the frequencies in order of
+    ## descending confidence levels
+    rem_freqs = pl.flipud(rem_freqs);
+    know_freqs = pl.flipud(know_freqs);
+    new_freqs = -pl.diff([pl.sum(new_RTs>q) for q in new_quantiles]+[0]);
+    x = pl.hstack([rem_freqs.flatten(),know_freqs.flatten(),new_freqs]);
+    # compute p, the probability associated with each category in the model
+    p_rem = p_r[:,None]*pl.ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
+    p_know = p_k[:,None]*pl.ones((nr_conf_levels,nr_quantiles))/float(nr_quantiles);
+    p_new = p_n*pl.ones(nr_quantiles)/float(nr_quantiles);
+    p = pl.hstack([p_rem.flatten(),p_know.flatten(),p_new]);
+
+    p_pred = p;
+    p_obs = x/N;
+    return p_obs,p_pred;
 
 def compute_model_quantiles(params,nr_quantiles=NR_QUANTILES):
     # This function is set up to deal with multiple confidence levels
