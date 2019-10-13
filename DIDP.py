@@ -51,11 +51,11 @@ params_est = DPMParams(0.9984,0.9984,0.1035,0.1035,0.1736,0.1736,0.0585,0.0586,-
 # parameters taken from single-process model
 #params_est_spm = [0.9452,0.0,0.3236,EPS,0.4126,0.0486,0,-0.124,0.0,-0.2745,0.5001,0.5527];
 
-params_est_spm = [1.0,0.3103,0.4169,-0.269,0.0458,-0.1284,0.5223,0.5656,0.0];
+params_est_spm = [1.0,0.3103,0.4169,-0.269,0.0458,-0.1284,0.5223,0.5656,0.0]
 # parameters fit using spm submodel w/ 10 quantiles. chisq = 828
 
 param_bounds = DPMParams((0.0,1.0),(0.0,1.0),(-2.0,2.0),(-2.0,2.0),(EPS,1.0),(EPS,1.0),
-    (0.05,1.0),(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(-2.0,2.0),(-2.0,2.0),(EPS,2.0),(0,0.5));
+    (0.05,1.0),(0.0,1.0),(-1.0,1.0),(-1.0,1.0),(-2.0,2.0),(-2.0,2.0),(EPS,2.0),(0,0.5))
 
 
 def find_ml_params_all(quantiles=NR_QUANTILES):
@@ -262,7 +262,7 @@ def predicted_proportions(c_r,c_f,mu_r,mu_f,d_r,d_f,tc_bound_r,tc_bound_f,z0_r,z
     kernel_f = stats.norm.pdf(x_f,mu_f,sigma_f) * delta_s_f;
     
     # compute the 2D kernel
-    kernel = np.transpose(np.matrix(kernel_r)) * np.matrix(kernel_f)
+    kernel = np.asarray(np.transpose(np.matrix(kernel_r)) * np.matrix(kernel_f))
     # ... and its Fourier transform. We'll use this to compute FD convolutions
     if(use_fftw):
         ft_kernel = fftw.fft(kernel);
@@ -285,7 +285,7 @@ def predicted_proportions(c_r,c_f,mu_r,mu_f,d_r,d_f,tc_bound_r,tc_bound_f,z0_r,z
     tx_r_to_idx = stats.norm.pdf(x_r,mu_r+z0_r,sigma_r)*delta_s_r;
     tx_f_to_idx = stats.norm.pdf(x_f,mu_f+z0_f,sigma_f)*delta_s_f;
     tx[to_idx] = np.transpose(np.matrix(tx_r_to_idx)) * np.matrix(tx_f_to_idx)
-    
+    tx[to_idx] = np.asarray(tx[to_idx]) # change matrix back to array
     
     # prob of old / new
     area_fnew_rnew = pl.sum(tx[to_idx][x_r<= -bound_r[to_idx]][:,x_f <= -bound_f[to_idx]])
@@ -318,6 +318,7 @@ def predicted_proportions(c_r,c_f,mu_r,mu_f,d_r,d_f,tc_bound_r,tc_bound_f,z0_r,z
     b_hit_r = abs(x_r)<bound_r[to_idx]
     b_hit_f = abs(x_f)<bound_f[to_idx];
     b_hit_mat = np.transpose(np.matrix(b_hit_r))*np.matrix(b_hit_f)
+    b_hit_mat = np.asarray(b_hit_mat)
     tx[to_idx]*= b_hit_mat
     ############################################################################
     # compute the parameters of the bivariate distribution of particle locations
@@ -343,9 +344,9 @@ def predicted_proportions(c_r,c_f,mu_r,mu_f,d_r,d_f,tc_bound_r,tc_bound_f,z0_r,z
 
         KLL_cdf = stats.norm.cdf(clims_f[j],loc = mu_f_delta, scale = s2_f_delta)
         KUL_cdf = stats.norm.cdf(clims_f[j-1],loc = mu_f_delta, scale = s2_f_delta)        
-        print(p_old_rem)
-        print(RLL_cdf)
-        print(RUL_cdf)
+        #print('rem: '+str(p_old_rem))
+        #print('low bound: '+str(RLL_cdf))
+        #print('high bound: '+ str(RUL_cdf))
         p_rem_conf[j-1,to_idx] = p_old_rem * (RUL_cdf - RLL_cdf);
         p_know_conf[j-1,to_idx] = p_old_know * (KUL_cdf - KLL_cdf);
         
@@ -398,7 +399,7 @@ def predicted_proportions(c_r,c_f,mu_r,mu_f,d_r,d_f,tc_bound_r,tc_bound_f,z0_r,z
         # remove from consideration any particles that already hit the bound
         b_hit_r = abs(x_r)<bound_r[i]
         b_hit_f = abs(x_f)<bound_f[i]
-        b_hit_mat = np.transpose(np.matrix(b_hit_r))*np.matrix(b_hit_f)
+        b_hit_mat = np.asarray(np.transpose(np.matrix(b_hit_r))*np.matrix(b_hit_f))
         tx[i]*= b_hit_mat
         ############################################################################
         # compute the parameters of the bivariate distribution of particle locations
