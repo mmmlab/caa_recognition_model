@@ -64,7 +64,7 @@ def reformat_revised_data():
     # close file
     ifile.close();
     # parse data string into object (list of dicts)
-    neha_data = yaml.load(filestr);
+    neha_data = yaml.load(filestr,Loader=yaml.CLoader);
     # compute aggregated results
     aggregated_data = compute_aggregate_results(neha_data);
     # save the reformatted data into a shelve database
