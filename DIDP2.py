@@ -38,7 +38,7 @@ NR_QUANTILES=10
 fftw.fftw_setup(pl.zeros(NR_SSTEPS),NR_THREADS)
 
 # 12/24/2016: modified (for flexibility) to use named tuple instead of list
-# DPMParams defines the overall parametrs for the set of old and new words
+# DPMParams defines the overall parameters for the set of old and new words
 # combined. 
 DPMParams = namedtuple('DPMParams',['c_r','c_f','mu_r','mu_f','d_r','d_f','tc_bound_r',
                     'tc_bound_f','z0_r','z0_f','mu_r_new','mu_f_new','deltaT','t_offset'])
@@ -215,7 +215,6 @@ def compute_model_quantiles(params,nr_quantiles=NR_QUANTILES):
     # return quantile locations and marginal p(new)
     return rem_quantiles,know_quantiles,new_quantiles,pl.sum(p_remember,1),pl.sum(p_know,1),pl.sum(p_new)
 
-print('now')
 def predicted_proportions(c_r,c_f,mu_r,mu_f,d_r,d_f,tc_bound_r,tc_bound_f,z0_r,z0_f,deltaT,
                           t_offset=0,use_fftw=USE_FFTW):
     # make c (the confidence levels) an array in case it is a scalar value
@@ -230,24 +229,18 @@ def predicted_proportions(c_r,c_f,mu_r,mu_f,d_r,d_f,tc_bound_r,tc_bound_f,z0_r,z
     # compute process SD
     sigma_r = pl.sqrt(2*d_r*DELTA_T)
     sigma_f = pl.sqrt(2*d_f*DELTA_T)
-#    sigma = pl.sqrt(sigma_r**2+sigma_f**2)
 
-    # compute the correlation for r given r+f
-#    rho = sigma_r/sigma
-
+    # construct the time axis and compute related values
     t = pl.linspace(DELTA_T,MAX_T,NR_TSTEPS) # this is the time axis
     to_idx = pl.argmin((t-t_offset)**2) # compute the index for t_offset
     bound_r = pl.exp(-tc_bound_r*pl.clip(t-t_offset,0,None)) # this is the collapsing bound
     bound_f = pl.exp(-tc_bound_f*pl.clip(t-t_offset,0,None)) # this is the collapsing bound
-    
-    #mu = (mu_r+mu_f)*DELTA_T # this is the average overall drift rate, with r = 'recall' and f = 'familiar'
     
     # compute the bounding limit of the space domain. This should include at 
     # least 99% of the probability mass when the particle is at the largest 
     # possible bound
     space_lim_r = max(bound_r)+3*sigma_r
     space_lim_f = max(bound_f)+3*sigma_f
-    
     delta_s_r = 2*space_lim_r/NR_SSTEPS
     delta_s_f = 2*space_lim_f/NR_SSTEPS
     
@@ -258,14 +251,15 @@ def predicted_proportions(c_r,c_f,mu_r,mu_f,d_r,d_f,tc_bound_r,tc_bound_f,z0_r,z
     # compute the diffusion kernels
     kernel_r = stats.norm.pdf(x_r,mu_r,sigma_r) * delta_s_r
     kernel_f = stats.norm.pdf(x_f,mu_f,sigma_f) * delta_s_f
-    # ... and their Fourier transforms. We'll use this to compute FD convolutions
+    # ... and their Fourier transforms. We'll use this to compute Fourier-domain
+    #  convolutions.
     if(use_fftw):
         ft_kernel_r = fftw.fft(kernel_r)
         ft_kernel_f = fftw.fft(kernel_f)
     else:
         ft_kernel_r = pl.fft(kernel_r)
         ft_kernel_f = pl.fft(kernel_f)
-    
+
     tx_r = pl.zeros((len(t),len(x_r)))
     tx_f = pl.zeros((len(t),len(x_r)))
     
@@ -275,137 +269,66 @@ def predicted_proportions(c_r,c_f,mu_r,mu_f,d_r,d_f,tc_bound_r,tc_bound_f,z0_r,z
     p_rem_conf = pl.zeros((n+1,pl.size(t))) 
     p_know_conf = pl.zeros((n+1,pl.size(t)))
     
-    
     ############################################
-    ## take care of the first timestep #########
+    ## Iterate through all timesteps     #######
     ############################################
-    tx_r[to_idx] = stats.norm.pdf(x_r,mu_r+z0_r,sigma_r)*delta_s_r
-    tx_f[to_idx] = stats.norm.pdf(x_f,mu_f+z0_f,sigma_f)*delta_s_f
-    
-    # prob of old / new
-    p_rold = tx_r[to_idx][x_r >= bound_r[to_idx]].sum()
-    p_rnew = tx_r[to_idx][x_r <= -bound_r[to_idx]].sum()
-    p_fold = tx_f[to_idx][x_f >= bound_f[to_idx]].sum()
-    p_fnew = tx_f[to_idx][x_f <= -bound_f[to_idx]].sum()
-
-    p_old[to_idx] = p_rold + p_fold - p_fold*p_rold - 0.5*(p_fold*p_rnew + p_rold*p_fnew)
-    p_new[to_idx] = p_rnew + p_fnew - p_fnew*p_rnew - 0.5*(p_fold*p_rnew + p_rold*p_fnew)
-    
-    # compute STD(r) for the current time
-    s_r = sigma_r
-    s_f = sigma_f
-    
-    # remove from consideration any particles that already hit the bound    
-    tx_r[to_idx] *= abs(x_r)<bound_r[to_idx]
-    tx_f[to_idx] *= abs(x_f)<bound_f[to_idx]
-
-    ############################################################################
-    # compute the parameters of the bivariate distribution of particle locations
-    # deltaT seconds after old/new decision
-    mu_r_delta = bound_r[to_idx]+mu_r*deltaT
-    mu_f_delta = bound_f[to_idx]+mu_f*deltaT
-    
-    s2_r_delta = s_r**2+2*d_r*deltaT
-    s2_f_delta = s_f**2+2*d_f*deltaT
-    ############################################################################
-    for j in range(1,len(clims_r)):
-        # Note that the clims appear in descending order, from highest to lowest value
-        p_old_rem = p_rold - 0.5*(p_fold_rold + p_fnew_rold)
-        p_old_know = p_fold - 0.5*(p_fold_rold + p_fold_rnew)
-        
-        RLL_cdf = stats.norm.cdf(clims_r[j],loc = mu_r_delta, scale = s2_r_delta)
-        RUL_cdf = stats.norm.cdf(clims_r[j-1],loc = mu_r_delta, scale = s2_r_delta)
-
-        KLL_cdf = stats.norm.cdf(clims_f[j],loc = mu_f_delta, scale = s2_f_delta)
-        KUL_cdf = stats.norm.cdf(clims_f[j-1],loc = mu_f_delta, scale = s2_f_delta)        
-
-        p_rem_conf[j-1,to_idx] = p_old_rem * (RUL_cdf - RLL_cdf)
-        p_know_conf[j-1,to_idx] = p_old_know * (KUL_cdf - KLL_cdf)
-        
-    #######################################
-    ## take care of subsequent timesteps ##
-    #######################################
-    
-    for i in range(to_idx+1,len(t)):
-        #tx[i] = convolve(tx[i-1],kernel,'same')
-        # convolve the particle distribution from the previous timestep
-        # with the diffusion kernel (using Fourier domain convolution)
-        if(use_fftw):
-            tx[i] = abs(pl.ifftshift(fftw.ifft2(fftw.fft2(tx[i-1])*ft_kernel)))
+    for i in range(to_idx,len(t)):
+        if(i==to_idx):
+            # first timestep
+            tx_r[i] = stats.norm.pdf(x_r,mu_r+z0_r,sigma_r)*delta_s_r
+            tx_f[i] = stats.norm.pdf(x_f,mu_f+z0_f,sigma_f)*delta_s_f
         else:
-            tx[i] = abs(pl.ifftshift(pl.ifft2(pl.fft2(tx[i-1])*ft_kernel)))
+            # all subsequent timesteps
+            if(use_fftw):
+                tx_r[i] = abs(pl.ifftshift(fftw.ifft(fftw.fft(tx_r[i-1])*ft_kernel_r)))
+                tx_f[i] = abs(pl.ifftshift(fftw.ifft(fftw.fft(tx_f[i-1])*ft_kernel_f)))
+            else:
+                tx_r[i] = abs(pl.ifftshift(pl.ifft(pl.fft(tx_r[i-1])*ft_kernel_r)))
+                tx_f[i] = abs(pl.ifftshift(pl.ifft(pl.fft(tx_f[i-1])*ft_kernel_f)))
+        
+        # prob of old / new
+        p_rold = tx_r[i][x_r >= bound_r[i]].sum()
+        p_rnew = tx_r[i][x_r <= -bound_r[i]].sum()
+        p_fold = tx_f[i][x_f >= bound_f[i]].sum()
+        p_fnew = tx_f[i][x_f <= -bound_f[i]].sum()
 
-
-        # compute the expected value of a particle that just exceeded the bound
-        # during the last time interval
+        p_old[i] = p_rold + p_fold - p_fold*p_rold - 0.5*(p_fold*p_rnew + p_rold*p_fnew)
+        p_new[i] = p_rnew + p_fnew - p_fnew*p_rnew - 0.5*(p_fold*p_rnew + p_rold*p_fnew)
         
-        print(pl.sum(tx[i]))
-        
-        # probability of each particle position above the upper bound
-        prob_fnew_rnew = tx[i][x_r<= -bound_r[i]][:,x_f <= -bound_f[i]]
-        prob_fnew_rold = tx[i][x_r>=bound_r[i]][:,x_f <= -bound_f[i]]
-        prob_fold_rnew = tx[i][x_r<= -bound_r[i]][:,x_f >= bound_f[i]]
-        prob_fold_rold = tx[i][x_r>=bound_r[i]][:,x_f >= bound_f[i]]
-        
-        prob_fold = tx[i][:,x_f >= bound_f[i]]
-        prob_fnew = tx[i][:,x_f <= -bound_f[i]]
-        prob_rold = tx[i][x_r>= bound_r[i]]
-        prob_rnew = tx[i][x_r<= -bound_r[i]]
-        
-        p_old[i] = pl.sum(prob_fold) + pl.sum(prob_rold) - pl.sum(prob_fold_rold) - 0.5 * pl.sum(prob_fnew_rold) - 0.5 * pl.sum(prob_fold_rnew)
-        p_new[i] = pl.sum(prob_fnew) + pl.sum(prob_rnew) - pl.sum(prob_fnew_rnew) - 0.5 * pl.sum(prob_fnew_rold) - 0.5 * pl.sum(prob_fold_rnew)
-        
-        
-        # location of each particle position above the upper bound
-        x_rold = x_r[x_r >= bound_r[i]]
-        x_fold = x_f[x_f >= bound_f[i]]
-        
-        
-        comb_est_r = (pl.dot(pl.sum(prob_rold,axis = 1),x_rold)+EPS)/(pl.sum(pl.sum(prob_rold,axis =1))+EPS)
-        comb_est_f = (pl.dot(pl.sum(prob_fold,axis = 0),x_fold)+EPS)/(pl.sum(pl.sum(prob_fold,axis=0))+EPS)
-                
+        p_old_rem = p_rold - 0.5*(p_fold*p_rold + p_fnew*p_rold)
+        p_old_know = p_fold - 0.5*(p_fold*p_rold + p_fnew*p_rold)
         # compute STD(r) for the current time
         s_r = pl.sqrt(2*d_r*t[i])
         s_f = pl.sqrt(2*d_f*t[i])
- 
-        # remove from consideration any particles that already hit the bound
-        b_hit_r = abs(x_r)<bound_r[i]
-        b_hit_f = abs(x_f)<bound_f[i]
-        b_hit_mat = np.asarray(np.transpose(np.matrix(b_hit_r))*np.matrix(b_hit_f))
-        tx[i]*= b_hit_mat
+        
+        # remove from consideration any particles that already hit the bound    
+        tx_r[i] *= abs(x_r)<bound_r[i]
+        tx_f[i] *= abs(x_f)<bound_f[i]
+
         ############################################################################
-        # compute the parameters of the bivariate distribution of particle locations
+        # Compute the expected position of a particle that just exceeded the bound
+        # during the last time interval
+        # 1. compute probability of each particle position above the upper bound
+        p_rpos = tx_r[i][x_r>=bound_r[i]]
+        p_fpos = tx_r[i][x_f>=bound_f[i]]
+        # 2. use these probabilities to compute expected positions
+        mu_rbound = pl.dot(p_rpos,x_r[x_r>=bound_r[i]])/(p_rpos.sum()+EPS)
+        mu_fbound = pl.dot(p_fpos,x_f[x_f>=bound_f[i]])/(p_fpos.sum()+EPS)
+        # Now, compute the parameters of the distribution of particle locations 
         # deltaT seconds after old/new decision
-        
-        mu_r_delta = comb_est_r + mu_r*deltaT
-        mu_f_delta = comb_est_f + mu_f*deltaT
-        
+        #  means ...
+        mu_r_delta = mu_rbound+mu_r*deltaT
+        mu_f_delta = mu_fbound+mu_f*deltaT
+        # ... and variances
         s2_r_delta = s_r**2+2*d_r*deltaT
         s2_f_delta = s_f**2+2*d_f*deltaT
-        
-        
-        #s2_comb_delta = 2*deltaT*(d_r+d_f)
-        #s2_comb_delta = s_r_cond**2+s_f_cond**2+2*deltaT*(d_r+d_f)
         ############################################################################
         for j in range(1,len(clims_r)):
             # Note that the clims appear in descending order, from highest to lowest value
-            p_old_rem = pl.sum(prob_rold) - 0.5*pl.sum(prob_fold_rold) - 0.5*pl.sum(prob_fnew_rold)
-            p_old_know = pl.sum(prob_fold) - 0.5*pl.sum(prob_fold_rold) - 0.5*pl.sum(prob_fold_rnew)
-            
-            RLL_cdf = stats.norm.cdf(clims_r[j],loc = mu_r_delta, scale = s2_r_delta)
-            RUL_cdf = stats.norm.cdf(clims_r[j-1],loc = mu_r_delta, scale = s2_r_delta)
-    
-            KLL_cdf = stats.norm.cdf(clims_f[j],loc = mu_f_delta, scale = s2_f_delta)
-            KUL_cdf = stats.norm.cdf(clims_f[j-1],loc = mu_f_delta, scale = s2_f_delta)        
-            
-            p_rem_conf[j-1,i] = p_old_rem * (RUL_cdf - RLL_cdf)
-            p_know_conf[j-1,i] = p_old_know * (KUL_cdf - KLL_cdf)
-        
-    # compute the marginal distributions for remember and know (i.e., across all confidence levels)
-    #p_remember = p_rem_conf.sum(0)
-    #p_know = p_know_conf.sum(0)
+            p_rem_conf[j-1,i] = p_old_rem*pl.diff(stats.norm.cdf([clims_r[j],clims_r[j-1]],mu_r_delta,s2_r_delta))
+            p_know_conf[j-1,i] = p_old_know*pl.diff(stats.norm.cdf([clims_f[j],clims_f[j-1]],mu_f_delta,s2_f_delta))
+
     return p_rem_conf,p_know_conf,p_new,t
-print('exit')
 
 ################################################################################
 ## Plotting functions
