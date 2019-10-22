@@ -43,9 +43,9 @@ fftw.fftw_setup(pl.zeros(NR_SSTEPS),NR_THREADS)
 DPMParams = namedtuple('DPMParams',['c_r','c_f','mu_r','mu_f','d_r','d_f','tc_bound_r',
                     'tc_bound_f','z0_r','z0_f','mu_r_new','mu_f_new','deltaT','t_offset'])
 
-params_est = DPMParams(0.9984,0.9984,0.1035,0.1035,0.1736,0.1736,0.0585,0.0586,-0.1306,-0.1306,
-                       -0.2438,-0.2438,0.5859,0.5126)
-# new params fitted using 10 quantiles: chisq = 794
+params_est = DPMParams(0.7442,0.9843,0.0145,0.00596,0.3075,0.2272,0.1346,0.1847,-0.1599,-0.1817,
+                       -0.00177,0.000255,0.6332,0.4717)
+# params for new DIDP model fitted using 10 quantiles: chisq = 5006
 
 params_est_spm = [1.0,0.3103,0.4169,-0.269,0.0458,-0.1284,0.5223,0.5656,0.0]
 # parameters fit using spm submodel w/ 10 quantiles. chisq = 828
@@ -305,6 +305,15 @@ def predicted_proportions(c_r,c_f,mu_r,mu_f,d_r,d_f,tc_bound_r,tc_bound_f,z0_r,z
         tx_r[i] *= abs(x_r)<bound_r[i]
         tx_f[i] *= abs(x_f)<bound_f[i]
 
+        # renormalize the remaining probabilities to correct for the total lost mass
+        lost_mass = p_old.sum()+p_new.sum()
+        remaining_mass = 1 - lost_mass
+        # compute scale factors required for renormalization
+        # i.e., so that rm = p_r = p_f
+        scale_f = remaining_mass/tx_f[i].sum()
+        scale_r = remaining_mass/tx_r[i].sum()
+        tx_r[i] *= scale_r
+        tx_f[i] *= scale_f
         ############################################################################
         # Compute the expected position of a particle that just exceeded the bound
         # during the last time interval
