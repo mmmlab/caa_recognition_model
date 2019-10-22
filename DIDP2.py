@@ -43,9 +43,9 @@ fftw.fftw_setup(pl.zeros(NR_SSTEPS),NR_THREADS)
 DPMParams = namedtuple('DPMParams',['c_r','c_f','mu_r','mu_f','d_r','d_f','tc_bound_r',
                     'tc_bound_f','z0_r','z0_f','mu_r_new','mu_f_new','deltaT','t_offset'])
 
-params_est = DPMParams(0.7442,0.9843,0.0145,0.00596,0.3075,0.2272,0.1346,0.1847,-0.1599,-0.1817,
-                       -0.00177,0.000255,0.6332,0.4717)
-# params for new DIDP model fitted using 10 quantiles: chisq = 5006
+params_est = DPMParams(0.6951,1.1565,0.0125,0.00706,0.2684,0.1840,0.1153,0.2044,-0.1557,-0.1666,
+                       -0.00182,0.00026,0.6786,0.5559)
+# params for new DIDP model fitted using 10 quantiles: chisq = 4012
 
 params_est_spm = [1.0,0.3103,0.4169,-0.269,0.0458,-0.1284,0.5223,0.5656,0.0]
 # parameters fit using spm submodel w/ 10 quantiles. chisq = 828
