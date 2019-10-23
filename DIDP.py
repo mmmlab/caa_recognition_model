@@ -26,7 +26,7 @@ db.close()
 USE_FFTW    = True
 INF_PROXY   = 10 # a value used to provide very large but finite bounds for mvn integration
 EPS         = 1e-10 # a very small value (used for numerical stability)
-NR_THREADS  = 4    # this is for multithreaded fft
+NR_THREADS  = 10    # this is for multithreaded fft
 DELTA_T     = 0.025  # size of discrete time increment (sec.)
 MAX_T       = 8.0 #ceil(percentile(all_RT,99.5))
 NR_TSTEPS   = int(MAX_T/DELTA_T)
@@ -373,7 +373,7 @@ def predicted_proportions(c_r,c_f,mu_r,mu_f,d_r,d_f,tc_bound_r,tc_bound_f,z0_r,z
         # compute the expected value of a particle that just exceeded the bound
         # during the last time interval
         
-        print(pl.sum(tx[i]))
+        # print(pl.sum(tx[i]))
         
         # probability of each particle position above the upper bound
         prob_fnew_rnew = tx[i][x_r<= -bound_r[i]][:,x_f <= -bound_f[i]]
