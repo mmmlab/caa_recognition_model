@@ -56,7 +56,7 @@ def simulate_vc_model(params,n):
     # 2. Compute the distance of each strength from the old/new criterion
     o_dists = s-crit_o
     # 3. Convert these into RTs for each trial
-    rts = e_a + e_b * pl.exp(e_c*o_dists)
+    rts = e_a + e_b * pl.exp(e_c*abs(o_dists))
     # 4. Compute the old/new and remember/know categories
     is_old = s > crit_o
     is_remember = s > crit_r
@@ -90,6 +90,8 @@ def vc_model_NLL(data,params):
     t_mu,t_sd,crit_mu,crit_sd,crit_o,e_a,e_b,e_c,conf1,conf2 = params
     # convert RTs into "distances" by inverting exponential function
     o_dists = pl.log((rts-e_a)/e_b)/e_c
+    # ... we also need to make the distances for the 'new' judgments negative
+    o_dists[pl.logical_not(is_old)] *= -1
     # convert the distances into word "strengths"
     s = o_dists + crit_o
     # this is the "fragile" part. If any of the strengths are smaller than the 
@@ -101,7 +103,7 @@ def vc_model_NLL(data,params):
     violation_found = pl.any(pl.logical_and((s<conf_crits),is_old))
     if violation_found:
         print(pl.logical_and((s<conf_crits),is_old).sum())
-        return -pl.inf  #i.e., likelihood = 0
+        return pl.inf  #i.e., likelihood = 0
 
     # compute the distribution parameters associated with each item
     s_means = pl.zeros(pl.shape(s))
