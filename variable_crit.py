@@ -1,8 +1,14 @@
 ## Implementation of variable-criterion word recognition model as described in
 ## Rotello & Zeng (2008)
 
+# standard library imports
+import shelve
+from collections import namedtuple
+# pylab stack imports
 import pylab as pl
 from scipy import stats
+# local imports
+
 
 # Constants 
 LURE_MEAN = 0
@@ -21,7 +27,21 @@ CONF1 = 1.2     # the confidence criterion for the second confidence level
 CONF2 = 2.0     # not actually defined in R&Z, who only used two confidence levels
 SAMPLE_PARAMS = (T_MU,T_SD,CRIT_MU,CRIT_SD,CRIT_O,E_A,E_B,E_C,CONF1,CONF2)
 
+# empirical results structure
+ERStruct = namedtuple('ERStruct',['know_hit','rem_hit','know_fa','rem_fa',
+                                  'CR','miss']);
+# reaction time & confidence structure
+RTConf = namedtuple('RTConf',['rt','conf']);
+
 # Functions
+array_not = pl.logical_not
+
+def array_and(*args):
+    """
+    Computes an elementwise logical 'and' operation across multiple arrays
+    """
+    return pl.prod(args,0).astype('bool')
+
 def simulate_vc_model(params,n):
     """
     Simulate trials from the variable-criterion model with the provided 
@@ -56,16 +76,31 @@ def simulate_vc_model(params,n):
     # 2. Compute the distance of each strength from the old/new criterion
     o_dists = s-crit_o
     # 3. Convert these into RTs for each trial
-    rts = e_a + e_b * pl.exp(e_c*abs(o_dists))
+    rts = (e_a + e_b * pl.exp(e_c*abs(o_dists)))/1000
     # 4. Compute the old/new and remember/know categories
     is_old = s > crit_o
     is_remember = s > crit_r
     # 5. Compute confidence levels
-    confs = pl.zeros(pl.shape(rts))
+    confs = pl.zeros(pl.shape(rts),dtype=int)
     confs[s>conf1] = 1
     confs[s>conf2] = 2
+    # 6. Convert simulated data to 'empirical' format
+    kh_idx = array_and(is_target,is_old,array_not(is_remember))
+    rh_idx = array_and(is_target,is_old,is_remember)
+    kfa_idx = array_and(array_not(is_target),is_old,array_not(is_remember))
+    rfa_idx = array_and(array_not(is_target),is_old,is_remember)
+    cr_idx = array_and(array_not(is_target),array_not(is_old))
+    miss_idx = array_and(is_target,array_not(is_old))
+
+    category_indices = [kh_idx,rh_idx,kfa_idx,rfa_idx,cr_idx,miss_idx]
+    categories = []
+    for idxs in category_indices:
+        category = [RTConf(rt,conf) for rt,conf in zip(rts[idxs],confs[idxs])]
+        categories.append(category)
+    
+    simulated_results = ERStruct(*categories)
     # return the simulated data
-    return rts,confs,is_target,is_old,is_remember
+    return simulated_results
 
     
 
