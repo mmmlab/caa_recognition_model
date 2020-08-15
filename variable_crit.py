@@ -238,6 +238,8 @@ def vc_model_NLL(data,params):
         crit_mu,crit_sd)
     # Compute the overall log-likelihood (across all trials)
     LL = s_LLs.sum()+rk_LLs.sum()+cat_LLs.sum()
+    if pl.isnan(LL):
+        LL = -pl.inf
     print(-LL)
     return -LL
 
@@ -253,7 +255,7 @@ def vc_model_NLL(data,params):
 #   conditioned on the RT (2) and category/confidence.
 
 #################################
-# model-fitting code
+# example model-fitting code
 #################################
 import scipy.optimize as opt
 
@@ -282,8 +284,10 @@ EPS = 1e-10 # a very small value (used for numerical stability)
 
 DPMParams = namedtuple('DPMParams',['T_MU','T_SD','CRIT_O','CRIT_MU','CRIT_SD','E_A','E_B',
                     'E_C','CONF1','CONF2'])
-PARAM_BOUNDS = DPMParams((0,2.0),(EPS,10.0),(-2.0,10.0),(-2.0,10.0),(EPS,10.0),(0,2000),
-    (-2000,2000),(-20.0,0.0),(0.0,10.0),(0.0,10.0))
+PARAM_BOUNDS = DPMParams((0,10.0),(EPS,10.0),(0,10.0),(EPS,10.0),(0,10),(0,2000),
+    (0,2000),(-5.0,0.0),(0.0,10.0),(0.0,10.0))
 
 sample_data = simulate_vc_model(SAMPLE_PARAMS,1000)
-params_est = find_ml_params_lm(sample_data,SAMPLE_PARAMS)
+# uncomment the line below to compute ML parameters
+#params_est = find_ml_params_lm(sample_data,SAMPLE_PARAMS)
+
