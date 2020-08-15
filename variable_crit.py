@@ -89,28 +89,7 @@ def format_as_simulation(data):
     simulation_format = rts,confs,is_target,is_old,is_remember
     return simulation_format
 
-# vectorized wrappers around existing functions
-def tnorm_logpdf1(x,a,b,mu,sigma):
-    # standardize a and b (this is what truncnorm expects)
-    a_std = (a-mu)/sigma
-    b_std = (b-mu)/sigma
-    func = np.vectorize(stats.truncnorm.logpdf)
-    return func(x,a_std,b_std,mu,sigma)
-
-def tnorm_logcdf1(x,a,b,mu,sigma):
-    # standardize a and b (this is what truncnorm expects)
-    a_std = (a-mu)/sigma
-    b_std = (b-mu)/sigma
-    func = np.vectorize(stats.truncnorm.logcdf)
-    return func(x,a_std,b_std,mu,sigma)
-
-def tnorm_logsf1(x,a,b,mu,sigma):
-    # standardize a and b (this is what truncnorm expects)
-    a_std = (a-mu)/sigma
-    b_std = (b-mu)/sigma
-    func = np.vectorize(stats.truncnorm.logsf)
-    return func(x,a_std,b_std,mu,sigma)
-
+# Truncated-normal distribution functions
 def tnorm_logpdf(x,a,b,mu,sigma):
     lnscale = pl.log(stats.norm.cdf(b,mu,sigma) - stats.norm.cdf(a,mu,sigma))
     lnpdf = stats.norm.logpdf(x,mu,sigma)-lnscale
