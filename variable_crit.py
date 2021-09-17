@@ -28,6 +28,8 @@ CONF1 = 1.2     # the confidence criterion for the second confidence level
 CONF2 = 2.0     # not actually defined in R&Z, who only used two confidence levels
 SAMPLE_PARAMS = (T_MU,T_SD,CRIT_MU,CRIT_SD,CRIT_O,E_A,E_B,E_C,CONF1,CONF2)
 
+SAMPLE_VCVB_PARAMS = list(SAMPLE_PARAMS[:-1]) + [CONF2-CONF1,1.0]
+
 # empirical results structure
 ERStruct = namedtuple('ERStruct',['know_hit','rem_hit','know_fa','rem_fa',
                                   'CR','miss']);
@@ -107,6 +109,10 @@ def tnorm_logsf(x,a,b,mu,sigma):
     lnsf = pl.log(un_sf)-lnscale
     return lnsf
 
+
+################################################################################
+# Model Definitions
+
 def simulate_vc_model(params,n):
     """
     Simulate trials from the variable-criterion model with the provided 
@@ -138,6 +144,55 @@ def simulate_vc_model(params,n):
     is_target = pl.zeros(pl.shape(s),dtype=bool)
     is_target[:n] = True
     crit_r = stats.norm.rvs(crit_mu,crit_sd,size=2*n)
+    # 2. Compute the distance of each strength from the old/new criterion
+    o_dists = s-crit_o
+    # 3. Convert these into RTs for each trial
+    rts = e_a + e_b * pl.exp(e_c*abs(o_dists))
+    # 4. Compute the old/new and remember/know categories
+    is_old = s > crit_o
+    is_remember = s > crit_r
+    # 5. Compute confidence levels
+    confs = pl.zeros(pl.shape(rts),dtype=int)
+    confs[s>conf1] = 1
+    confs[s>conf2] = 2
+    # return the simulated data
+    simulated_data = rts,confs,is_target,is_old,is_remember
+    return format_as_empirical(simulated_data)
+
+
+def simulate_vcvb_model(params,n):
+    """
+    Simulate trials from the variable-criterion, variable-(confidence) bound 
+    model with the provided parameters.
+
+    Arguments:
+        params: a tuple or list of the model parameters (see SAMPLE_PARAMS above
+        for parameter definitions and order
+        n: the number of target trials and lure trials (these are assumed to be
+        equal, as in the experiment, giving a total of 2n simulated trials)
+
+    Returns:
+        rts: an array of 2n simulated response times, one for each trial, in ms
+        confs: an array indicating the confidence rating for each trial
+        is_target: a logical array indicating which trials used a target word
+        is_old: a logical array indicating which trials were lableled 'old' 
+        (i.e., rather than 'new')
+        is_remember: a logical array indicating which trials were labeled 
+        'remember' (i.e., rather than 'know')  
+    """
+    # unpack parameters
+    t_mu,t_sd,crit_mu,crit_sd,crit_o,e_a,e_b,e_c,conf1_mu,conf2_delta,conf_sd = params
+    # 1. Simulate strengths and criteria for each of n trials
+    targets = stats.norm.rvs(t_mu,t_sd,size=n)
+    lures = stats.norm.rvs(LURE_MEAN,LURE_SD,size=n)
+    # stack the two sets of trials (lures and targets) into a single array
+    s = pl.hstack([targets,lures])
+    # create a logical array telling us which trials are target trials
+    is_target = pl.zeros(pl.shape(s),dtype=bool)
+    is_target[:n] = True
+    crit_r = stats.norm.rvs(crit_mu,crit_sd,size=2*n)
+    conf1 = stats.norm.rvs(conf1_mu,conf_sd,size=2*n)
+    conf2 = conf1 + conf2_delta
     # 2. Compute the distance of each strength from the old/new criterion
     o_dists = s-crit_o
     # 3. Convert these into RTs for each trial
@@ -209,7 +264,7 @@ def vc_model_NLL(data,params):
     s_b = pl.zeros(pl.shape(s)); s_b[:] = pl.inf
     # ... for 'new' responses
     s_b[pl.logical_not(is_old)] = crit_o
-    # ... for targets
+    # ... for 'old' responses
     s_a[is_old] = crit_o
     # ... also set bounds for specific confidence levels
     s_b[array_and(is_old,confs==0)] = conf1 # upper-bound for conf = 0
@@ -254,6 +309,93 @@ def vc_model_NLL(data,params):
 # 3. Finally, for 'old' judgements, compute the remember/know probability 
 #   conditioned on the RT (2) and category/confidence.
 
+
+def vcvb_model_NLL(data,params):
+    """
+    Compute and return the negative log-likelihood for the variable-criterion,
+    variable-(confidence) bound model with the provided parameters.
+
+    Arguments:
+        params: a tuple or list of the model parameters (see SAMPLE_PARAMS above
+        for parameter definitions and order
+        data: a tuple or ERStruct of arrays describing the trial outcomes. If 
+        using a tuple, it should include rts, confs, is_target, is_old, and 
+        is_remember as defined and in the same format described in the 
+        simulate_vc_model function.
+
+    Returns:
+        NLL: the negative log-likelihood of the model parameters given the data 
+    """
+    # unpack data
+    if(type(data)==tuple):
+        rts,confs,is_target,is_old,is_remember = data
+    else:
+        rts,confs,is_target,is_old,is_remember = format_as_simulation(data)
+    # unpack parameters
+    t_mu,t_sd,crit_mu,crit_sd,crit_o,e_a,e_b,e_c,conf1_mu,conf2_delta,conf_sd = params
+    # convert RTs into "distances" by inverting exponential function
+    o_dists = pl.log((rts-e_a)/e_b)/e_c
+    # ... we also need to make the distances for the 'new' judgments negative
+    o_dists[pl.logical_not(is_old)] *= -1
+    # convert the distances into word "strengths"
+    s = o_dists + crit_o
+    # compute the distribution parameters associated with each item
+    s_means = pl.zeros(pl.shape(s))
+    s_sds = pl.zeros(pl.shape(s))
+    # ... for lures
+    s_means[pl.logical_not(is_target)] = LURE_MEAN
+    s_sds[pl.logical_not(is_target)] = LURE_SD
+    # ... for targets
+    s_means[is_target] = t_mu
+    s_sds[is_target] = t_sd
+    # Use these to compute the response category probabilities. To do this, we 
+    # will also need to define the truncation limits a and b. The default is to 
+    # have an unbounded domain
+    s_a = pl.zeros(pl.shape(s)); s_a[:] = -pl.inf
+    s_b = pl.zeros(pl.shape(s)); s_b[:] = pl.inf
+    # ... for 'new' responses
+    s_b[pl.logical_not(is_old)] = crit_o
+    # ... for 'old' responses
+    s_a[is_old] = crit_o
+    # compute category log-likelihoods (e.g., for p(old|target), p(new|lure),etc.)
+    cat_LLs = pl.log(stats.norm.cdf(s_b,s_means,s_sds)-stats.norm.cdf(s_a,s_means,s_sds))
+    # compute the log-likelihood of of the observed RTs/strengths given the 
+    # category--e.g., p(RT|old,target). We can do this 
+    # by using truncated normal distributions whose truncation boundaries are 
+    # defined by the category/confidence bounds.
+    s_LLs = tnorm_logpdf(s,s_a,s_b,s_means,s_sds)
+    # for 'old' responses, you also have to compute the (log) probability that
+    # the remember/know criterion would be greater than (for 'know' responses) 
+    # or less than (for 'remember' responses) the word strength for that trial.
+    # Categories:
+    ## 'new': just set the likelihood to 1 (log-likelihood=0)
+    rk_LLs = pl.zeros(pl.shape(s))
+    ## 'old-remember': p(crit_r < s)
+    rk_LLs[is_remember] = tnorm_logcdf(s[is_remember],s_a[is_remember],
+        s_b[is_remember],crit_mu,crit_sd)
+    ## 'old-know': p(crit_r > s)
+    is_know = pl.logical_not(is_remember)
+    rk_LLs[is_know] = tnorm_logsf(s[is_know],s_a[is_know],s_b[is_know],
+        crit_mu,crit_sd)
+    # finally, for 'old' responses, compute the (log) probability that the 
+    # confidence bounds exceed or subceed the strength of the word strength
+    conf_LLs = pl.zeros(pl.shape(s))
+    ## conf=0
+    conf_LLs[array_and(is_old,confs==0)] = stats.norm.logsf(s[array_and(is_old,confs==0)],conf1_mu,conf_sd)
+    ## conf=2
+    conf_LLs[array_and(is_old,confs==2)] = stats.norm.logcdf(s[array_and(is_old,confs==2)],conf1_mu+conf2_delta,conf_sd)
+    ## conf=1
+    conf_LLs[array_and(is_old,confs==1)] = stats.norm.logcdf(s[array_and(is_old,confs==1)],conf1_mu,conf_sd)\
+        + stats.norm.logsf(s[array_and(is_old,confs==1)],conf1_mu+conf2_delta,conf_sd)
+    # Compute the overall log-likelihood (across all trials)
+    LL = s_LLs.sum()+rk_LLs.sum()+conf_LLs.sum()+cat_LLs.sum()
+    if pl.isnan(LL):
+        LL = -pl.inf
+    print(-LL)
+    if LL > 0:
+        1/0
+    return -LL
+
 #################################
 # example model-fitting code
 #################################
@@ -266,7 +408,7 @@ def find_ml_params(data,param_bounds):
     for each judgment category and confidence level) is represented using the
     number of quantiles specified by the 'quantiles' parameter.
     """
-    obj_func = lambda x:vc_model_NLL(data,x)
+    obj_func = lambda x:vcvb_model_NLL(data,x)
     return opt.differential_evolution(obj_func,param_bounds)
 
 def find_ml_params_lm(data,params_init):
@@ -276,18 +418,22 @@ def find_ml_params_lm(data,params_init):
     confidence level) is represented using the number of quantiles specified by
     the 'quantiles' parameter.
     """
-    obj_func = lambda x:vc_model_NLL(data,x)
+    obj_func = lambda x:vcvb_model_NLL(data,x)
     # computes mle of params using a local (fast) optimization algorithm
     return opt.fmin(obj_func,params_init)
 
 EPS = 1e-10 # a very small value (used for numerical stability)
 
-DPMParams = namedtuple('DPMParams',['T_MU','T_SD','CRIT_O','CRIT_MU','CRIT_SD','E_A','E_B',
-                    'E_C','CONF1','CONF2'])
-PARAM_BOUNDS = DPMParams((0,10.0),(EPS,10.0),(0,10.0),(EPS,10.0),(0,10),(0,2000),
-    (0,2000),(-5.0,0.0),(0.0,10.0),(0.0,10.0))
+# DPMParams = namedtuple('DPMParams',['T_MU','T_SD','CRIT_O','CRIT_MU','CRIT_SD','E_A','E_B',
+#                     'E_C','CONF1','CONF2'])
+# PARAM_BOUNDS = DPMParams((0,10.0),(EPS,10.0),(0,10.0),(EPS,10.0),(0,10),(0,2000),
+#     (0,2000),(-5.0,0.0),(0.0,10.0),(0.0,10.0))
 
-sample_data = simulate_vc_model(SAMPLE_PARAMS,1000)
+param_bounds = [(0,10.0),(EPS,10.0),(0,10.0),(EPS,10.0),(0,10),(0,2000),
+    (0,2000),(-5.0,0.0),(0.0,10.0),(0.0,10.0),(EPS,10.0)]
+
+#sample_data = simulate_vc_model(SAMPLE_PARAMS,1000)
+sample_data = simulate_vcvb_model(SAMPLE_VCVB_PARAMS,1000)
 # uncomment the line below to compute ML parameters
-#params_est = find_ml_params_lm(sample_data,SAMPLE_PARAMS)
+params_est = find_ml_params(sample_data,param_bounds)
 
