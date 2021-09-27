@@ -82,7 +82,7 @@ def get_conf_roc(use_raw_conf=True):
     FA_rates = []
     hit_rates = []
     for crit in possible_crits:
-        yes_trials = conf_crits>crit
+        yes_trials = conf_crits>=crit
         nr_hits = np.sum(yes_trials*is_target)
         nr_FAs = np.sum(yes_trials*np.logical_not(is_target))
         hit_rate = nr_hits/nr_targ_trials
