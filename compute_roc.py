@@ -13,6 +13,65 @@ import yaml
 
 YAML_FILENAME = 'caa_model/data/neha_data_revised.yml';
 
+
+class ROC(object):
+    def __init__(self,hit_counts,fa_counts,targ_count,noise_count):
+        self.levels = np.arange(len(hit_counts))
+        self.hit_counts = hit_counts
+        self.fa_counts = fa_counts
+        self.targ_count = targ_count
+        self.noise_count = noise_count
+
+    @property
+    def hit_rates(self):
+        # compute cumulative hit rates (from level 1 up, since the minimum
+        # response is a "sure no")
+        hits = np.flipud(self.hit_counts[1:])
+        cum_hits = np.cumsum(hits)
+        return cum_hits/self.targ_count
+
+    @property
+    def fa_rates(self):
+        # compute cumulative fa rates (from level 1 up)
+        fas = np.flipud(self.fa_counts[1:])
+        cum_fas = np.cumsum(fas)
+        return cum_fas/self.noise_count
+    
+    @property
+    def nr_trials(self):
+        return self.targ_count + self.noise_count
+
+    @property
+    def auc(self):
+        # compute area under ROC curve
+        hr = [0]+self.hit_rates.tolist()+[1]
+        far = [0]+self.fa_rates.tolist()+[1]
+        AUC = trapz(hr,far)
+        return AUC
+
+    def plot(self):
+        pl.figure(figsize=(4,4))
+        # plot diagonal
+        pl.plot([0,1],[0,1],'k:')
+        # plot ROC points
+        hr = self.hit_rates
+        far = self.fa_rates
+        pl.plot(far,hr,'bo')
+
+
+def get_trial_data():
+    # open yaml file
+    ifile = open(YAML_FILENAME,'r')
+    # read in data string
+    filestr = ifile.read()
+    # close file
+    ifile.close()
+    # parse data string into object (list of dicts)
+    neha_data = yaml.load(filestr,Loader=yaml.CLoader)
+
+    return neha_data
+
+
 def get_conf_crit(trial,use_raw_conf=True):
     """
     converts confidence to ROC criterion for an individual trial.
@@ -32,9 +91,11 @@ def get_conf_crit(trial,use_raw_conf=True):
     # look up old/new 'detection' judgment
     detected = trial['judgment'] in ['hit','FA']
     # look up confidence rating
-    adjusted_confidence = trial[conf_key]+1
+    adjusted_confidence = trial[conf_key]
     # compute criterion
-    criterion = neutral_point + adjusted_confidence * ((2*detected)-1)
+    # criterion = neutral_point + adjusted_confidence * ((2*detected)-1)
+    criterion = neutral_point + adjusted_confidence if detected else\
+                neutral_point - adjusted_confidence - 1
 
     return criterion
     
@@ -47,100 +108,135 @@ def get_rt_crit(trial,rt_quantiles):
     respectively, as intermediate criteria, and high-confidence "new" judgments
     as the most liberal criteria.
     """
-    neutral_point = len(rt_quantiles)+1
+    neutral_point = len(rt_quantiles)
     trial_rt = trial['rt.normed']
     # compute rt "rank"
-    rt_rank = len(rt_quantiles) - pl.find(rt_quantiles>trial_rt).min()
+    rt_rank = len(rt_quantiles) - pl.find(rt_quantiles>=trial_rt).min() - 1
     # look up old/new 'detection' judgment
     detected = trial['judgment'] in ['hit','FA']
     # compute criterion
-    criterion = neutral_point + rt_rank * ((2*detected)-1)
-
+    # criterion = neutral_point + rt_rank * ((2*detected)-1)
+    criterion = neutral_point + rt_rank if detected else\
+                neutral_point - rt_rank - 1
 
     return criterion
     
 
-def get_conf_roc(use_raw_conf=True):
+def get_conf_roc(trial_data,use_raw_conf=False):
     """
     
     """
-    # open yaml file
-    ifile = open(YAML_FILENAME,'r');
-    # read in data string
-    filestr = ifile.read();
-    # close file
-    ifile.close();
-    # parse data string into object (list of dicts)
-    neha_data = yaml.load(filestr,Loader=yaml.CLoader);
-    conf_crits = np.array([get_conf_crit(trial,use_raw_conf) for trial in neha_data])
-    is_target = np.array([trial['judgment'] in ['hit','miss'] for trial in neha_data])
+    conf_levels = np.array([get_conf_crit(trial,use_raw_conf) for trial in trial_data])
+    is_target = np.array([trial['judgment'] in ['hit','miss'] for trial in trial_data])
     # compute roc coords
     nr_targ_trials = np.sum(is_target)
     nr_noise_trials = np.sum(is_target==False)
-    possible_crits = range(conf_crits.max())
+    possible_levels = range(conf_levels.max()+1)
 
-    FA_rates = []
-    hit_rates = []
-    for crit in possible_crits:
-        yes_trials = conf_crits>=crit
-        nr_hits = np.sum(yes_trials*is_target)
-        nr_FAs = np.sum(yes_trials*np.logical_not(is_target))
-        hit_rate = nr_hits/nr_targ_trials
-        FA_rate = nr_FAs/nr_noise_trials
-        FA_rates.append(FA_rate)
-        hit_rates.append(hit_rate)
-    # compute AUC
-    # add 0,1 endpoints and flip arrays
-    far = pl.flipud([1]+FA_rates+[0])
-    hr = pl.flipud([1]+hit_rates+[0])
-    auc = trapz(hr,far)
-    nr_trials = len(neha_data)
+    targ_counts = []
+    lure_counts = []
+    for conf in possible_levels:
+        yes_trials = conf_levels==conf
+        nr_targs = np.sum(yes_trials*is_target)
+        nr_lures = np.sum(yes_trials*np.logical_not(is_target))
+        targ_counts.append(nr_targs)
+        lure_counts.append(nr_lures)
 
-    return hit_rates,FA_rates,auc,nr_trials
+    roc_obj = ROC(targ_counts,lure_counts,nr_targ_trials,nr_noise_trials)
 
-def get_rt_roc(nr_quantiles=3):
+    return roc_obj
+
+# def get_conf_roc(trial_data,use_raw_conf=True):
+#     """
+    
+#     """
+#     conf_crits = np.array([get_conf_crit(trial,use_raw_conf) for trial in trial_data])
+#     is_target = np.array([trial['judgment'] in ['hit','miss'] for trial in trial_data])
+#     # compute roc coords
+#     nr_targ_trials = np.sum(is_target)
+#     nr_noise_trials = np.sum(is_target==False)
+#     possible_crits = range(conf_crits.max())
+
+#     FA_rates = []
+#     hit_rates = []
+#     for crit in possible_crits:
+#         yes_trials = conf_crits>crit
+#         nr_hits = np.sum(yes_trials*is_target)
+#         nr_FAs = np.sum(yes_trials*np.logical_not(is_target))
+#         hit_rate = nr_hits/nr_targ_trials
+#         FA_rate = nr_FAs/nr_noise_trials
+#         FA_rates.append(FA_rate)
+#         hit_rates.append(hit_rate)
+#     # compute AUC
+#     # add 0,1 endpoints and flip arrays
+#     far = pl.flipud([1]+FA_rates+[0])
+#     hr = pl.flipud([1]+hit_rates+[0])
+#     auc = trapz(hr,far)
+#     nr_trials = len(trial_data)
+
+#     return hit_rates,FA_rates,auc,nr_trials
+
+
+def get_rt_roc(trial_data,nr_quantiles=3):
     """
     
     """
-    # open yaml file
-    ifile = open(YAML_FILENAME,'r');
-    # read in data string
-    filestr = ifile.read();
-    # close file
-    ifile.close();
-    # parse data string into object (list of dicts)
-    neha_data = yaml.load(filestr,Loader=yaml.CLoader);
-
-    trial_rts = np.array([trial['rt.normed'] for trial in neha_data])
+    trial_rts = np.array([trial['rt.normed'] for trial in trial_data])
     quantile_ranks = (pl.arange(nr_quantiles)+1)/nr_quantiles
     quantiles = pl.quantile(trial_rts,quantile_ranks)
-    rt_crits = np.array([get_rt_crit(trial,quantiles) for trial in neha_data])
-    is_target = np.array([trial['judgment'] in ['hit','miss'] for trial in neha_data])
+    rt_levels = np.array([get_rt_crit(trial,quantiles) for trial in trial_data])
+    is_target = np.array([trial['judgment'] in ['hit','miss'] for trial in trial_data])
     # compute roc coords
     nr_targ_trials = np.sum(is_target)
     nr_noise_trials = np.sum(is_target==False)
-    possible_crits = range(rt_crits.max())
-    1/0
+    possible_levels = range(rt_levels.max()+1)
 
-    FA_rates = []
-    hit_rates = []
-    for crit in possible_crits:
-        yes_trials = rt_crits>crit
-        nr_hits = np.sum(yes_trials*is_target)
-        nr_FAs = np.sum(yes_trials*np.logical_not(is_target))
-        hit_rate = nr_hits/nr_targ_trials
-        FA_rate = nr_FAs/nr_noise_trials
-        FA_rates.append(FA_rate)
-        hit_rates.append(hit_rate)
+    targ_counts = []
+    lure_counts = []
+    for level in possible_levels:
+        yes_trials = rt_levels==level
+        nr_targs = np.sum(yes_trials*is_target)
+        nr_lures = np.sum(yes_trials*np.logical_not(is_target))
+        targ_counts.append(nr_targs)
+        lure_counts.append(nr_lures)
 
-    # compute AUC
-    # add 0,1 endpoints and flip arrays
-    far = pl.flipud([1]+FA_rates+[0])
-    hr = pl.flipud([1]+hit_rates+[0])
-    auc = trapz(hr,far)
-    nr_trials = len(neha_data)
+    roc_obj = ROC(targ_counts,lure_counts,nr_targ_trials,nr_noise_trials)
+    return roc_obj
 
 
-    return hit_rates,FA_rates,auc,nr_trials
+# def get_rt_roc(trial_data,nr_quantiles=3):
+#     """
+    
+#     """
+#     trial_rts = np.array([trial['rt.normed'] for trial in trial_data])
+#     quantile_ranks = (pl.arange(nr_quantiles)+1)/nr_quantiles
+#     quantiles = pl.quantile(trial_rts,quantile_ranks)
+#     rt_crits = np.array([get_rt_crit(trial,quantiles) for trial in trial_data])
+#     is_target = np.array([trial['judgment'] in ['hit','miss'] for trial in trial_data])
+#     # compute roc coords
+#     nr_targ_trials = np.sum(is_target)
+#     nr_noise_trials = np.sum(is_target==False)
+#     possible_crits = range(rt_crits.max())
+
+#     FA_rates = []
+#     hit_rates = []
+#     for crit in possible_crits:
+#         yes_trials = rt_crits>crit
+#         nr_hits = np.sum(yes_trials*is_target)
+#         nr_FAs = np.sum(yes_trials*np.logical_not(is_target))
+#         hit_rate = nr_hits/nr_targ_trials
+#         FA_rate = nr_FAs/nr_noise_trials
+#         FA_rates.append(FA_rate)
+#         hit_rates.append(hit_rate)
+
+#     # compute AUC
+#     # add 0,1 endpoints and flip arrays
+#     far = pl.flipud([1]+FA_rates+[0])
+#     hr = pl.flipud([1]+hit_rates+[0])
+#     auc = trapz(hr,far)
+#     nr_trials = len(trial_data)
+
+#     return hit_rates,FA_rates,auc,nr_trials
+
 
     
