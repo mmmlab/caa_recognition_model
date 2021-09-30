@@ -7,11 +7,15 @@ from collections import namedtuple
 import numpy as np
 import pylab as pl
 from numpy import array
+from scipy import stats
 from scipy.integrate import trapz
 # third party imports
 import yaml
 
 YAML_FILENAME = 'caa_model/data/neha_data_revised.yml';
+
+Phi = stats.norm.cdf
+invPhi = stats.norm.ppf
 
 
 class ROC(object):
@@ -48,6 +52,14 @@ class ROC(object):
         far = [0]+self.fa_rates.tolist()+[1]
         AUC = trapz(hr,far)
         return AUC
+    
+    @property
+    def dprime(self):
+        return 2*stats.norm.ppf(self.auc)
+
+    @property
+    def criteria(self):
+        return -0.5*(invPhi(self.hit_rates)+invPhi(self.fa_rates))
 
     def plot(self):
         pl.figure(figsize=(4,4))
@@ -57,6 +69,28 @@ class ROC(object):
         hr = self.hit_rates
         far = self.fa_rates
         pl.plot(far,hr,'bo')
+
+def sdt_roc_loglike(roc,params):
+    mu = params[0] # signal mean (or distance between means)
+    sigma = params[1] # signal sd (or ratio of signal to noise sd)
+    crits = params[2:] # criterion locations
+    bin_edges = [-np.inf]+crits+[np.inf]
+    # compute expected target and lure classification probabilities
+    targ_probs = []
+    lure_probs = []
+    for i in range(1,len(bin_edges)):
+        hi = bin_edges[i]
+        lo = bin_edges[i-1]
+        lure_prob = Phi(hi)-Phi(lo)
+        targ_prob = Phi(hi,mu,sigma) - Phi(lo,mu,sigma)
+        targ_probs.append(targ_prob)
+        lure_probs.append(lure_prob)
+    # use these to compute a mutinomial (log) likelihood for the targets ...
+    targ_LL = stats.multinomial.logpmf(roc.hit_counts,roc.targ_count,targ_probs)
+    # ... and for the lures
+    lure_LL = stats.multinomial.logpmf(roc.fa_counts,roc.noise_count,lure_probs)
+    LL = targ_LL + lure_LL
+    return LL
 
 
 def get_trial_data():
@@ -143,38 +177,7 @@ def get_conf_roc(trial_data,use_raw_conf=False):
         lure_counts.append(nr_lures)
 
     roc_obj = ROC(targ_counts,lure_counts,nr_targ_trials,nr_noise_trials)
-
     return roc_obj
-
-# def get_conf_roc(trial_data,use_raw_conf=True):
-#     """
-    
-#     """
-#     conf_crits = np.array([get_conf_crit(trial,use_raw_conf) for trial in trial_data])
-#     is_target = np.array([trial['judgment'] in ['hit','miss'] for trial in trial_data])
-#     # compute roc coords
-#     nr_targ_trials = np.sum(is_target)
-#     nr_noise_trials = np.sum(is_target==False)
-#     possible_crits = range(conf_crits.max())
-
-#     FA_rates = []
-#     hit_rates = []
-#     for crit in possible_crits:
-#         yes_trials = conf_crits>crit
-#         nr_hits = np.sum(yes_trials*is_target)
-#         nr_FAs = np.sum(yes_trials*np.logical_not(is_target))
-#         hit_rate = nr_hits/nr_targ_trials
-#         FA_rate = nr_FAs/nr_noise_trials
-#         FA_rates.append(FA_rate)
-#         hit_rates.append(hit_rate)
-#     # compute AUC
-#     # add 0,1 endpoints and flip arrays
-#     far = pl.flipud([1]+FA_rates+[0])
-#     hr = pl.flipud([1]+hit_rates+[0])
-#     auc = trapz(hr,far)
-#     nr_trials = len(trial_data)
-
-#     return hit_rates,FA_rates,auc,nr_trials
 
 
 def get_rt_roc(trial_data,nr_quantiles=3):
@@ -202,41 +205,5 @@ def get_rt_roc(trial_data,nr_quantiles=3):
 
     roc_obj = ROC(targ_counts,lure_counts,nr_targ_trials,nr_noise_trials)
     return roc_obj
-
-
-# def get_rt_roc(trial_data,nr_quantiles=3):
-#     """
-    
-#     """
-#     trial_rts = np.array([trial['rt.normed'] for trial in trial_data])
-#     quantile_ranks = (pl.arange(nr_quantiles)+1)/nr_quantiles
-#     quantiles = pl.quantile(trial_rts,quantile_ranks)
-#     rt_crits = np.array([get_rt_crit(trial,quantiles) for trial in trial_data])
-#     is_target = np.array([trial['judgment'] in ['hit','miss'] for trial in trial_data])
-#     # compute roc coords
-#     nr_targ_trials = np.sum(is_target)
-#     nr_noise_trials = np.sum(is_target==False)
-#     possible_crits = range(rt_crits.max())
-
-#     FA_rates = []
-#     hit_rates = []
-#     for crit in possible_crits:
-#         yes_trials = rt_crits>crit
-#         nr_hits = np.sum(yes_trials*is_target)
-#         nr_FAs = np.sum(yes_trials*np.logical_not(is_target))
-#         hit_rate = nr_hits/nr_targ_trials
-#         FA_rate = nr_FAs/nr_noise_trials
-#         FA_rates.append(FA_rate)
-#         hit_rates.append(hit_rate)
-
-#     # compute AUC
-#     # add 0,1 endpoints and flip arrays
-#     far = pl.flipud([1]+FA_rates+[0])
-#     hr = pl.flipud([1]+hit_rates+[0])
-#     auc = trapz(hr,far)
-#     nr_trials = len(trial_data)
-
-#     return hit_rates,FA_rates,auc,nr_trials
-
 
     
