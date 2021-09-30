@@ -8,6 +8,7 @@ import numpy as np
 import pylab as pl
 from numpy import array
 from scipy import stats
+import scipy.optimize as opt
 from scipy.integrate import trapz
 # third party imports
 import yaml
@@ -64,16 +65,17 @@ class ROC(object):
     def plot(self):
         pl.figure(figsize=(4,4))
         # plot diagonal
-        pl.plot([0,1],[0,1],'k:')
+        pl.plot([0,1],[0,1],color='gray',linestyle='solid')
         # plot ROC points
         hr = self.hit_rates
         far = self.fa_rates
         pl.plot(far,hr,'bo')
+        pl.axis([-0.01,1.01,-0.01,1.01])
 
-def sdt_roc_loglike(roc,params):
+def sdt_roc_NLL(roc,params):
     mu = params[0] # signal mean (or distance between means)
     sigma = params[1] # signal sd (or ratio of signal to noise sd)
-    crits = params[2:] # criterion locations
+    crits = list(params[2:]) # criterion locations
     bin_edges = [-np.inf]+crits+[np.inf]
     # compute expected target and lure classification probabilities
     targ_probs = []
@@ -90,7 +92,29 @@ def sdt_roc_loglike(roc,params):
     # ... and for the lures
     lure_LL = stats.multinomial.logpmf(roc.fa_counts,roc.noise_count,lure_probs)
     LL = targ_LL + lure_LL
-    return LL
+    return -LL
+
+def fit_sdt_model(roc):
+    mu_0 = roc.dprime
+    sigma_0 = 1
+    crits_0 = np.flipud(roc.criteria)
+    params_init = [mu_0,sigma_0]+list(crits_0)
+    init_NLL = sdt_roc_NLL(roc,params_init)
+    print('NLL for inital parameter estimates = %2.2f'%init_NLL)
+    objective = lambda theta:sdt_roc_NLL(roc,theta)
+    params = opt.fmin(objective,params_init)
+    return params
+
+def plot_sdt_model(params):
+    mu = params[0] # signal mean (or distance between means)
+    sigma = params[1] # signal sd (or ratio of signal to noise sd)
+    crits = list(params[2:]) # criterion locations
+    crit_ax = pl.linspace(-2,2*sigma+mu,100)
+    fa_rates = stats.norm.sf(crit_ax)
+    hit_rates = stats.norm.sf(crit_ax,mu,sigma)
+    pl.plot(fa_rates,hit_rates,'b-')
+
+
 
 
 def get_trial_data():
