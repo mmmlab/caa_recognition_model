@@ -14,7 +14,8 @@ from scipy.integrate import trapz
 # third party imports
 import yaml
 
-YAML_FILENAME = 'caa_model/data/neha_data_revised.yml';
+EXPT1_FILENAME = 'caa_model/data/neha_data_revised.yml';
+EXPT2_FILENAME = 'caa_model/data/mengxue_data.yml';
 
 Phi = stats.norm.cdf
 invPhi = stats.norm.ppf
@@ -230,9 +231,9 @@ class ROC(object):
 
 
 
-def get_trial_data():
+def get_trial_data(filename=EXPT1_FILENAME):
     # open yaml file
-    ifile = open(YAML_FILENAME,'r')
+    ifile = open(EXPT1_FILENAME,'r')
     # read in data string
     filestr = ifile.read()
     # close file
