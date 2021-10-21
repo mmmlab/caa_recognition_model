@@ -9,6 +9,7 @@ import numpy as np
 import pylab as pl
 from numpy import array
 from scipy import stats
+from scipy.special import gammaln
 import scipy.optimize as opt
 from scipy.integrate import trapz
 # third party imports
@@ -19,6 +20,19 @@ EXPT2_FILENAME = 'caa_model/data/mengxue_data.yml';
 
 Phi = stats.norm.cdf
 invPhi = stats.norm.ppf
+
+def multinom_LL(obs,n,probs):
+    """
+    computes the log likelihood for a multinomial distribution 
+    """
+    x = np.array(obs)
+    p = np.array(probs)
+    # deal with zero probability categories
+    if any(p==0):
+        p += 1.0/n
+        p /= p.sum()
+    res = gammaln(n+1)-np.sum(gammaln(x+1))+np.sum(x*np.log(p))
+    return res
 
 ################################################################################
 ## Define SDT ROC Model
@@ -38,9 +52,9 @@ def sdt_roc_NLL(roc,params):
         targ_probs.append(targ_prob)
         lure_probs.append(lure_prob)
     # use these to compute a mutinomial (log) likelihood for the targets ...
-    targ_LL = stats.multinomial.logpmf(roc.hit_counts,roc.targ_count,targ_probs)
+    targ_LL = multinom_LL(roc.hit_counts,roc.targ_count,targ_probs)
     # ... and for the lures
-    lure_LL = stats.multinomial.logpmf(roc.fa_counts,roc.noise_count,lure_probs)
+    lure_LL = multinom_LL(roc.fa_counts,roc.noise_count,lure_probs)
     LL = targ_LL + lure_LL
     return -LL
 
@@ -49,11 +63,29 @@ def fit_sdt_model(roc):
     sigma_0 = 1
     crits_0 = np.flipud(roc.criteria)
     params_init = [mu_0,sigma_0]+list(crits_0)
+    lo_bounds = [0,0] + [-2]*len(crits_0)
+    hi_bounds = [10,10] + [20]*len(crits_0)
+    param_bounds = opt.Bounds(lo_bounds,hi_bounds)
     init_NLL = sdt_roc_NLL(roc,params_init)
     print('NLL for inital parameter estimates = %2.2f'%init_NLL)
     objective = lambda theta:sdt_roc_NLL(roc,theta)
-    params = opt.fmin(objective,params_init)
+    # compute preliminary global optimization
+    #prelim_fit = opt.differential_evolution(objective,param_bounds)
+    #params_fit = opt.basinhopping(objective,params_init)
+    # compute local optimization
+    params_fit = opt.minimize(objective,params_init,bounds=param_bounds,method='Nelder-Mead')
+    # params = opt.fmin(objective,prelim_fit.x)
+    params = params_fit.x
     return params
+
+def compute_sdt_model(params):
+    mu = params[0] # signal mean (or distance between means)
+    sigma = params[1] # signal sd (or ratio of signal to noise sd)
+    crits = list(params[2:]) # criterion locations
+    fa_rates = stats.norm.sf(crits)
+    hit_rates = stats.norm.sf(crits,mu,sigma)
+    return fa_rates,hit_rates
+
 
 def plot_sdt_model(params):
     mu = params[0] # signal mean (or distance between means)
@@ -89,9 +121,9 @@ def htm_roc_NLL(roc,params):
     lure_probs = list(reversed(lure_probs))
 
     # use these to compute a mutinomial (log) likelihood for the targets ...
-    targ_LL = stats.multinomial.logpmf(roc.hit_counts,roc.targ_count,targ_probs)
+    targ_LL = multinom_LL(roc.hit_counts,roc.targ_count,targ_probs)
     # ... and for the lures
-    lure_LL = stats.multinomial.logpmf(roc.fa_counts,roc.noise_count,lure_probs)
+    lure_LL = multinom_LL(roc.fa_counts,roc.noise_count,lure_probs)
     LL = targ_LL + lure_LL
     return -LL
 
@@ -102,14 +134,28 @@ def fit_htm_model(roc):
     p_new_0 = 1-((1-b)/m) # i.e., minimum CR rate should be 1 - value of far when hr=1
     biases_0 = (roc.hit_rates-p_old_0)/(1-p_old_0)
     params_init = [p_old_0,p_new_0]+list(biases_0)
-    param_bounds = opt.Bounds(0,1)
+    param_bounds = opt.Bounds([0]*len(params_init),[1]*len(params_init))
     init_NLL = htm_roc_NLL(roc,params_init)
     print('NLL for inital parameter estimates = %2.2f'%init_NLL)
     objective = lambda theta:htm_roc_NLL(roc,theta)
-    res = opt.minimize(objective,params_init,bounds=param_bounds,method='Nelder-Mead')
-    params = res.x
+    # compute preliminary global optimization
+    # prelim_fit = opt.differential_evolution(objective,param_bounds)
+    # compute local optimization
+    params_fit = opt.minimize(objective,params_init,bounds=param_bounds,method='SLSQP')
+    # params_fit = opt.basinhopping(objective,res.x)
+    
+    # params = res.x
+    params = params_fit.x
     print('Current function value = %2.4f'%htm_roc_NLL(roc,params))
     return params
+
+def compute_htm_model(params):
+    p_old = params[0] # prob. of classifying a target as old (excluding guesses)
+    p_new = params[1] # prob. of classifying a lure as new (excluding guesses)
+    biases = list(params[2:])# probs. of guessing 'old' under different conf levels.
+    hit_rates = p_old + biases*(1-p_old)
+    fa_rates = biases*(1-p_new)
+    return fa_rates,hit_rates
 
 def plot_htm_model(params):
     p_old = params[0] # prob. of classifying a target as old (excluding guesses)
@@ -166,7 +212,12 @@ class ROC(object):
 
     @property
     def criteria(self):
-        return -0.5*(invPhi(self.hit_rates)+invPhi(self.fa_rates))
+        if self._sdt_params is None:
+            return -0.5*(invPhi(self.hit_rates)+invPhi(self.fa_rates))
+        else:
+            mu = self._sdt_params[0]
+            sigma = self._sdt_params[1]
+            return -0.5*(invPhi(self.hit_rates,mu,sigma)+invPhi(self.fa_rates))
     
     def get_htm_params(self,recompute=False):
         if (self._htm_params is None) or recompute:
@@ -231,17 +282,22 @@ class ROC(object):
 
 
 
-def get_trial_data(filename=EXPT1_FILENAME):
+def get_trial_data(filename=EXPT1_FILENAME,subid=None):
     # open yaml file
-    ifile = open(EXPT1_FILENAME,'r')
+    ifile = open(filename,'r')
     # read in data string
     filestr = ifile.read()
     # close file
     ifile.close()
     # parse data string into object (list of dicts)
-    neha_data = yaml.load(filestr,Loader=yaml.CLoader)
+    data = yaml.load(filestr,Loader=yaml.CLoader)
+    if subid is not None:
+        subj_data = [trial for trial in data if str(trial['subject'])==subid]
+        if subj_data==[]:
+            1/0
+        return subj_data
 
-    return neha_data
+    return data
 
 
 def get_conf_crit(trial,use_raw_conf=True):
@@ -271,7 +327,7 @@ def get_conf_crit(trial,use_raw_conf=True):
 
     return criterion
     
-def get_rt_crit(trial,rt_quantiles):
+def get_rt_crit(trial,rt_quantiles,use_normed=True):
     """
     converts confidence to ROC criterion for an individual trial.
     
@@ -281,7 +337,7 @@ def get_rt_crit(trial,rt_quantiles):
     as the most liberal criteria.
     """
     neutral_point = len(rt_quantiles)
-    trial_rt = trial['rt.normed']
+    trial_rt = trial['rt.normed'] if use_normed else trial['rt.secs']
     # compute rt "rank"
     rt_rank = len(rt_quantiles) - pl.find(rt_quantiles>=trial_rt).min() - 1
     # look up old/new 'detection' judgment
@@ -318,14 +374,17 @@ def get_conf_roc(trial_data,use_raw_conf=False):
     return roc_obj
 
 
-def get_rt_roc(trial_data,nr_quantiles=3):
+def get_rt_roc(trial_data,nr_quantiles=3,use_normed=True):
     """
     
     """
-    trial_rts = np.array([trial['rt.normed'] for trial in trial_data])
+    if use_normed:
+        trial_rts = np.array([trial['rt.normed'] for trial in trial_data])
+    else:
+        trial_rts = np.array([trial['rt.secs'] for trial in trial_data])
     quantile_ranks = (pl.arange(nr_quantiles)+1)/nr_quantiles
     quantiles = pl.quantile(trial_rts,quantile_ranks)
-    rt_levels = np.array([get_rt_crit(trial,quantiles) for trial in trial_data])
+    rt_levels = np.array([get_rt_crit(trial,quantiles,use_normed) for trial in trial_data])
     is_target = np.array([trial['judgment'] in ['hit','miss'] for trial in trial_data])
     # compute roc coords
     nr_targ_trials = np.sum(is_target)
@@ -346,24 +405,43 @@ def get_rt_roc(trial_data,nr_quantiles=3):
 
     
 # Script
-trial_data = get_trial_data()
-conf_roc = get_conf_roc(trial_data,False)
-rt_roc = get_rt_roc(trial_data,3)
-savepath = 'caa_model/plots/'
-# make sure that the savepath exists
-if not os.path.exists(savepath):
-    os.makedirs(savepath)
+def computeAndPlotROC(filename=EXPT1_FILENAME,subid=None,use_normed_rts=True):
+    trial_data = get_trial_data(filename,subid)
+    conf_roc = get_conf_roc(trial_data,False)
+    rt_roc = get_rt_roc(trial_data,3,use_normed_rts)
+    savepath = 'caa_model/plots/'
+    # make sure that the savepath exists
+    if not os.path.exists(savepath):
+        os.makedirs(savepath)
 
-conf_roc.plot()
-pl.title('Confidence ROCs')
-pl.gca().set_aspect('equal')
-filename = '%sconf_roc_%d'%(savepath,(len(conf_roc.criteria)+1)/2)
-pl.savefig(filename+'.png',transparent=True,dpi=300,bbox_inches='tight',\
-            pad_inches=0.05)
+    conf_roc.plot()
+    pl.title('Confidence ROCs')
+    pl.gca().set_aspect('equal')
+    filename = '%sconf_roc_%d'%(savepath,(len(conf_roc.criteria)+1)/2)
+    if subid is not None:
+        filename+='_s%s'%subid
+    pl.savefig(filename+'.png',transparent=True,dpi=300,bbox_inches='tight',\
+                pad_inches=0.05)
 
-rt_roc.plot()
-pl.title('Response Time ROCs')
-pl.gca().set_aspect('equal')
-filename = '%srt_roc_%d'%(savepath,(len(rt_roc.criteria)+1)/2)
-pl.savefig(filename+'.png',transparent=True,dpi=300,bbox_inches='tight',\
-            pad_inches=0.05)
+    rt_roc.plot()
+    pl.title('Response Time ROCs')
+    pl.gca().set_aspect('equal')
+    filename = '%srt_roc_%d'%(savepath,(len(rt_roc.criteria)+1)/2)
+    if subid is not None:
+        filename+='_s%s'%subid
+    pl.savefig(filename+'.png',transparent=True,dpi=300,bbox_inches='tight',\
+                pad_inches=0.05)
+    
+    return conf_roc,rt_roc
+
+# Script
+# make plots for Expt 1
+expt1_rocs = computeAndPlotROC()
+# make (individual) plots for Expt 2
+subids = ['%s'%num for num in [1,3,5,7]]
+subj_rocs = []
+for subid in subids:
+    rocs = computeAndPlotROC(EXPT2_FILENAME,subid,False)
+    subj_rocs.append(rocs)
+
+
