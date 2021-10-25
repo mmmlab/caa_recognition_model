@@ -27,10 +27,9 @@ def multinom_LL(obs,n,probs):
     """
     x = np.array(obs)
     p = np.array(probs)
-    # deal with zero probability categories
     if any(p==0):
-        p += 1.0/n
-        p /= p.sum()
+        p += 1.0/(2*n)
+        p /= np.sum(p)
     res = gammaln(n+1)-np.sum(gammaln(x+1))+np.sum(x*np.log(p))
     return res
 
@@ -67,7 +66,7 @@ def fit_sdt_model(roc):
     hi_bounds = [10,10] + [20]*len(crits_0)
     param_bounds = opt.Bounds(lo_bounds,hi_bounds)
     init_NLL = sdt_roc_NLL(roc,params_init)
-    print('NLL for inital parameter estimates = %2.2f'%init_NLL)
+    print('NLL for inital parameter estimates (SDT) = %2.2f'%init_NLL)
     objective = lambda theta:sdt_roc_NLL(roc,theta)
     # compute preliminary global optimization
     #prelim_fit = opt.differential_evolution(objective,param_bounds)
@@ -99,8 +98,9 @@ def plot_sdt_model(params):
 ################################################################################
 ## Define 2HTM ROC Model
 def htm_roc_NLL(roc,params):
-    p_old = np.clip(params[0],0,1) # prob. of classifying a target as old (excluding guesses)
-    p_new = np.clip(params[1],0,1) # prob. of classifying a lure as new (excluding guesses)
+    params = np.clip(params,0,1)
+    p_old = params[0] # prob. of classifying a target as old (excluding guesses)
+    p_new = params[1] # prob. of classifying a lure as new (excluding guesses)
     biases = list(params[2:])+[1] # probs. of guessing 'old' under different conf levels.
     # compute expected target and lure classification probabilities
     targ_probs = []
@@ -117,14 +117,15 @@ def htm_roc_NLL(roc,params):
         targ_probs.append(targ_prob)
         lure_probs.append(lure_prob)
 
-    targ_probs = list(reversed(targ_probs))
-    lure_probs = list(reversed(lure_probs))
+    targ_probs = np.flipud(targ_probs)
+    lure_probs = np.flipud(lure_probs)
 
     # use these to compute a mutinomial (log) likelihood for the targets ...
     targ_LL = multinom_LL(roc.hit_counts,roc.targ_count,targ_probs)
     # ... and for the lures
     lure_LL = multinom_LL(roc.fa_counts,roc.noise_count,lure_probs)
     LL = targ_LL + lure_LL
+    1/0
     return -LL
 
 def fit_htm_model(roc):
@@ -132,11 +133,12 @@ def fit_htm_model(roc):
     m,b = np.polyfit(roc.fa_rates,roc.hit_rates,deg=1)
     p_old_0 = b # i.e., minimum hit rate should be equal to the y intercept
     p_new_0 = 1-((1-b)/m) # i.e., minimum CR rate should be 1 - value of far when hr=1
-    biases_0 = (roc.hit_rates-p_old_0)/(1-p_old_0)
+    # biases_0 = (roc.hit_rates-p_old_0)/(1-p_old_0)
+    biases_0 = roc.hit_rates/(1-p_new_0)
     params_init = [p_old_0,p_new_0]+list(biases_0)
     param_bounds = opt.Bounds([0]*len(params_init),[1]*len(params_init))
     init_NLL = htm_roc_NLL(roc,params_init)
-    print('NLL for inital parameter estimates = %2.2f'%init_NLL)
+    print('NLL for inital parameter estimates (2HTM) = %2.2f'%init_NLL)
     objective = lambda theta:htm_roc_NLL(roc,theta)
     # compute preliminary global optimization
     # prelim_fit = opt.differential_evolution(objective,param_bounds)
@@ -402,6 +404,23 @@ def get_rt_roc(trial_data,nr_quantiles=3,use_normed=True):
 
     roc_obj = ROC(targ_counts,lure_counts,nr_targ_trials,nr_noise_trials)
     return roc_obj
+
+def recovery_test_2htm(params,nr_pos,nr_neg):
+    """
+    simulate a 2HTM ROC based on the specified parameters and test the ability 
+    of the fitting function to recover these parameters
+    """
+    p_old = params[0] # prob. of classifying a target as old (excluding guesses)
+    p_new = params[1] # prob. of classifying a lure as new (excluding guesses)
+    biases = list(params[2:])+[1] # probs. of guessing 'old' under different conf levels.
+    # compute positive (target) trials
+    nr_old_hc = stats.binom.rvs(nr_pos,p_old)
+    nr_pos_guess = nr_pos - nr_old_hc
+    # generate negative (lure) trials
+    nr_new_hc = stats.binom.rvs(nr_neg,p_new)
+    pass
+
+
 
     
 # Script
