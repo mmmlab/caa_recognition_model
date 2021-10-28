@@ -25,11 +25,12 @@ def multinom_LL(obs,n,probs):
     """
     computes the log likelihood for a multinomial distribution 
     """
+    if np.any(probs<0):
+        return -np.inf
     x = np.array(obs)
     p = np.array(probs)
     if any(p==0):
         p += 1.0/(2*n)
-        p /= np.sum(p)
     res = gammaln(n+1)-np.sum(gammaln(x+1))+np.sum(x*np.log(p))
     return res
 
@@ -125,8 +126,37 @@ def htm_roc_NLL(roc,params):
     # ... and for the lures
     lure_LL = multinom_LL(roc.fa_counts,roc.noise_count,lure_probs)
     LL = targ_LL + lure_LL
-    1/0
     return -LL
+
+# def htm_roc_NLL(roc,params):
+#     params = np.clip(params,0,1)
+#     p_old = params[0] # prob. of classifying a target as old (excluding guesses)
+#     p_new = params[1] # prob. of classifying a lure as new (excluding guesses)
+#     biases = list(params[2:])+[1] # probs. of guessing 'old' under different conf levels.
+#     # compute expected target and lure classification probabilities
+#     targ_probs = []
+#     lure_probs = []
+#     for i,bias in enumerate(biases):
+#         cum_targ_prob = p_old + bias*(1-p_old)
+#         cum_lure_prob = bias*(1-p_new)
+#         if i==0:
+#             targ_prob = cum_targ_prob
+#             lure_prob = cum_lure_prob
+#         else:
+#             targ_prob = cum_targ_prob - pl.sum(targ_probs)
+#             lure_prob = cum_lure_prob - pl.sum(lure_probs)
+#         targ_probs.append(targ_prob)
+#         lure_probs.append(lure_prob)
+
+#     targ_probs = np.flipud(targ_probs)
+#     lure_probs = np.flipud(lure_probs)
+
+#     # use these to compute a mutinomial (log) likelihood for the targets ...
+#     targ_LL = multinom_LL(roc.hit_counts,roc.targ_count,targ_probs)
+#     # ... and for the lures
+#     lure_LL = multinom_LL(roc.fa_counts,roc.noise_count,lure_probs)
+#     LL = targ_LL + lure_LL
+#     return -LL
 
 def fit_htm_model(roc):
     # fit a line through the far and hr points to estimate initial params
@@ -134,7 +164,9 @@ def fit_htm_model(roc):
     p_old_0 = b # i.e., minimum hit rate should be equal to the y intercept
     p_new_0 = 1-((1-b)/m) # i.e., minimum CR rate should be 1 - value of far when hr=1
     # biases_0 = (roc.hit_rates-p_old_0)/(1-p_old_0)
-    biases_0 = roc.hit_rates/(1-p_new_0)
+    bias_est_fa = roc.fa_rates/(1-p_new_0)
+    bias_est_hit = (roc.hit_rates-p_old_0)/(1-p_old_0)
+    biases_0 = 0.5*(bias_est_fa+bias_est_hit)
     params_init = [p_old_0,p_new_0]+list(biases_0)
     param_bounds = opt.Bounds([0]*len(params_init),[1]*len(params_init))
     init_NLL = htm_roc_NLL(roc,params_init)
@@ -143,7 +175,7 @@ def fit_htm_model(roc):
     # compute preliminary global optimization
     # prelim_fit = opt.differential_evolution(objective,param_bounds)
     # compute local optimization
-    params_fit = opt.minimize(objective,params_init,bounds=param_bounds,method='SLSQP')
+    params_fit = opt.minimize(objective,params_init,bounds=param_bounds,method='L-BFGS-B')
     # params_fit = opt.basinhopping(objective,res.x)
     
     # params = res.x
@@ -246,7 +278,7 @@ class ROC(object):
         pl.ylabel('Hit rate')
         self._ax = pl.gca()
 
-    def plot_htm_fit(self):
+    def plot_htm_fit(self,plot_biases=True):
         params = self.get_htm_params()
         p_old = params[0] # prob. of classifying a target as old (excluding guesses)
         p_new = params[1] # prob. of classifying a lure as new (excluding guesses)
@@ -255,6 +287,13 @@ class ROC(object):
         hit_rates = p_old + bias_ax*(1-p_old)
         fa_rates = bias_ax*(1-p_new)
         pl.plot(fa_rates,hit_rates,'b-')
+        if(plot_biases):
+            C = np.array(biases)
+            HR = p_old+C*(1-p_old)
+            FAR = C*(1-p_new)
+            pl.plot(FAR,HR,'bs',mfc='none',ms=11)
+
+
 
     def plot_sdt_fit(self):
         params = self.get_sdt_params()
@@ -363,16 +402,16 @@ def get_conf_roc(trial_data,use_raw_conf=False):
     nr_noise_trials = np.sum(is_target==False)
     possible_levels = range(conf_levels.max()+1)
 
-    targ_counts = []
-    lure_counts = []
+    hit_counts = []
+    fa_counts = []
     for conf in possible_levels:
         yes_trials = conf_levels==conf
         nr_targs = np.sum(yes_trials*is_target)
         nr_lures = np.sum(yes_trials*np.logical_not(is_target))
-        targ_counts.append(nr_targs)
-        lure_counts.append(nr_lures)
+        hit_counts.append(nr_targs)
+        fa_counts.append(nr_lures)
 
-    roc_obj = ROC(targ_counts,lure_counts,nr_targ_trials,nr_noise_trials)
+    roc_obj = ROC(hit_counts,fa_counts,nr_targ_trials,nr_noise_trials)
     return roc_obj
 
 
@@ -393,19 +432,19 @@ def get_rt_roc(trial_data,nr_quantiles=3,use_normed=True):
     nr_noise_trials = np.sum(is_target==False)
     possible_levels = range(rt_levels.max()+1)
 
-    targ_counts = []
-    lure_counts = []
+    hit_counts = []
+    fa_counts = []
     for level in possible_levels:
         yes_trials = rt_levels==level
         nr_targs = np.sum(yes_trials*is_target)
         nr_lures = np.sum(yes_trials*np.logical_not(is_target))
-        targ_counts.append(nr_targs)
-        lure_counts.append(nr_lures)
+        hit_counts.append(nr_targs)
+        fa_counts.append(nr_lures)
 
-    roc_obj = ROC(targ_counts,lure_counts,nr_targ_trials,nr_noise_trials)
+    roc_obj = ROC(hit_counts,fa_counts,nr_targ_trials,nr_noise_trials)
     return roc_obj
 
-def recovery_test_2htm(params,nr_pos,nr_neg):
+def recovery_test_2htm(params,nr_targs,nr_lures):
     """
     simulate a 2HTM ROC based on the specified parameters and test the ability 
     of the fitting function to recover these parameters
@@ -413,13 +452,35 @@ def recovery_test_2htm(params,nr_pos,nr_neg):
     p_old = params[0] # prob. of classifying a target as old (excluding guesses)
     p_new = params[1] # prob. of classifying a lure as new (excluding guesses)
     biases = list(params[2:])+[1] # probs. of guessing 'old' under different conf levels.
-    # compute positive (target) trials
-    nr_old_hc = stats.binom.rvs(nr_pos,p_old)
-    nr_pos_guess = nr_pos - nr_old_hc
+    # generate positive (target) trials
+    nr_targ_hc = stats.binom.rvs(nr_targs,p_old)
+    nr_targ_guess = nr_targs - nr_targ_hc
     # generate negative (lure) trials
-    nr_new_hc = stats.binom.rvs(nr_neg,p_new)
-    pass
-
+    nr_lure_hc = stats.binom.rvs(nr_lures,p_new)
+    nr_lure_guess = nr_lures - nr_lure_hc
+    # create random 'guesses' for targets and lures
+    targ_guess = pl.rand(nr_targ_guess)
+    lure_guess = pl.rand(nr_lure_guess)
+    # classify the guesses by confidence
+    targ_confs = np.zeros(nr_targ_guess)
+    lure_confs = np.zeros(nr_lure_guess)
+    for i in range(1,len(biases)):
+        hi = biases[i]
+        lo = biases[i-1]
+        targ_idxs = np.logical_and(targ_guess>lo,targ_guess<=hi)
+        lure_idxs = np.logical_and(lure_guess>lo,lure_guess<=hi)
+        targ_confs[targ_idxs] = i
+        lure_confs[lure_idxs] = i
+    # count number of positive responses at each confidence level
+    hit_confs,hit_counts = np.unique(targ_confs,return_counts=True)
+    fa_confs,fa_counts = np.unique(lure_confs,return_counts=True)
+    # add in non-guesses
+    hit_counts[-1] += nr_targ_hc    # non-guess (high-confidence) hits
+    fa_counts[0] += nr_lure_hc      # non-guess correct rejections
+    # construct and return ROC object
+    roc_obj = ROC(hit_counts,fa_counts,nr_targs,nr_lures)
+    recovered_params = roc_obj.get_htm_params()
+    return roc_obj,recovered_params
 
 
     
@@ -456,11 +517,18 @@ def computeAndPlotROC(filename=EXPT1_FILENAME,subid=None,use_normed_rts=True):
 # Script
 # make plots for Expt 1
 expt1_rocs = computeAndPlotROC()
-# make (individual) plots for Expt 2
-subids = ['%s'%num for num in [1,3,5,7]]
-subj_rocs = []
-for subid in subids:
-    rocs = computeAndPlotROC(EXPT2_FILENAME,subid,False)
-    subj_rocs.append(rocs)
 
+# # make (individual) plots for Expt 2
+# subids = ['%s'%num for num in [1,3,5,7]]
+# subj_rocs = []
+# for subid in subids:
+#     rocs = computeAndPlotROC(EXPT2_FILENAME,subid,False)
+#     subj_rocs.append(rocs)
+
+
+# define and recover parameters from test 2HTM model ROC
+nr_targs = 3849
+nr_lures = 3886
+true_params = [0.36,0.16,0.07,0.32,0.34,0.53,0.8]
+model_roc,params_est = recovery_test_2htm(true_params,nr_targs,nr_lures)
 
