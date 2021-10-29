@@ -25,10 +25,10 @@ def multinom_LL(obs,n,probs):
     """
     computes the log likelihood for a multinomial distribution 
     """
-    if np.any(probs<0):
-        return -np.inf
     x = np.array(obs)
     p = np.array(probs)
+    if np.any(p<0):
+        return -np.inf
     if any(p==0):
         p += 1.0/(2*n)
     #res = gammaln(n+1)-np.sum(gammaln(x+1))+np.sum(x*np.log(p))
@@ -108,9 +108,9 @@ def htm_roc_NLL(roc,params):
     # compute expected target and lure classification probabilities
     cum_targ_probs = p_old + biases*(1-p_old)
     cum_lure_probs = biases*(1-p_new)
-
-    targ_probs = np.diff(cum_targ_probs,prepend=0,append=1)
-    lure_probs = np.diff(cum_lure_probs,prepend=0,append=1)
+    # ordered from highest to lowest confidence
+    targ_probs = np.diff(np.hstack(([0],cum_targ_probs,[1])))
+    lure_probs = np.diff(np.hstack(([0],cum_lure_probs,[1])))
 
     # targ_probs = []
     # lure_probs = []
@@ -233,6 +233,7 @@ class ROC(object):
         # response is a "sure no")
         hits = np.flipud(self.hit_counts[1:])
         cum_hits = np.cumsum(hits)
+        # cumsum is now organized from high to low confidence
         return cum_hits/self.targ_count
 
     @property
@@ -305,7 +306,7 @@ class ROC(object):
             C = np.array(biases)
             HR = p_old+C*(1-p_old)
             FAR = C*(1-p_new)
-            pl.plot(FAR,HR,'bs',mfc='none',ms=11)
+            pl.plot(FAR,HR,'bs',mfc='none',ms=10)
 
 
 
