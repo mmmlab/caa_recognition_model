@@ -60,8 +60,13 @@ def sdt_roc_NLL(roc,params):
     return -LL
 
 def fit_sdt_model(roc):
-    mu_0 = roc.dprime
-    sigma_0 = 1
+    # mu_0 = roc.dprime
+    # sigma_0 = 1
+    # crits_0 = np.flipud(roc.criteria)
+    # compute inital params using zROC transformation
+    m,b = np.polyfit(Phi(roc.fa_rates),Phi(roc.hit_rates),deg=1)
+    sigma_0 = m
+    mu_0 = b/m
     crits_0 = np.flipud(roc.criteria)
     params_init = [mu_0,sigma_0]+list(crits_0)
     lo_bounds = [0,0] + [-2]*len(crits_0)
@@ -105,35 +110,16 @@ def htm_roc_NLL(roc,params):
     p_old = params[0] # prob. of classifying a target as old (excluding guesses)
     p_new = params[1] # prob. of classifying a lure as new (excluding guesses)
     biases = np.array(params[2:]) # probs. of guessing 'old' under different conf levels.
+    # note that these are ordered from high to low confidence
     # compute expected target and lure classification probabilities
     cum_targ_probs = p_old + biases*(1-p_old)
     cum_lure_probs = biases*(1-p_new)
     # ordered from highest to lowest confidence
     targ_probs = np.diff(np.hstack(([0],cum_targ_probs,[1])))
     lure_probs = np.diff(np.hstack(([0],cum_lure_probs,[1])))
-
-    # targ_probs = []
-    # lure_probs = []
-    # for i,bias in enumerate(biases):
-    #     # ordered from lowest bias to highest
-    #     # or, equivalently, from most conservative to most liberal criterion
-    #     # or, equivalently, from highest to lowest confidence
-    #     cum_targ_prob = p_old + bias*(1-p_old)
-    #     cum_lure_prob = bias*(1-p_new)
-    #     if i==0:
-    #         targ_prob = cum_targ_prob
-    #         lure_prob = cum_lure_prob
-    #     else:
-    #         targ_prob = cum_targ_prob - pl.sum(targ_probs)
-    #         lure_prob = cum_lure_prob - pl.sum(lure_probs)
-    #     targ_probs.append(targ_prob)
-    #     lure_probs.append(lure_prob)
-
-    #     lure_probs[-1] += p_new
-
+    # now flip them so that they are ordered from low to high confidence
     targ_probs = np.flipud(targ_probs)
     lure_probs = np.flipud(lure_probs)
-
     # use these to compute a mutinomial (log) likelihood for the targets ...
     targ_LL = multinom_LL(roc.hit_counts,roc.targ_count,targ_probs)
     # ... and for the lures
@@ -186,8 +172,6 @@ def fit_htm_model(roc):
     init_NLL = htm_roc_NLL(roc,params_init)
     print('NLL for inital parameter estimates (2HTM) = %2.2f'%init_NLL)
     objective = lambda theta:htm_roc_NLL(roc,theta)
-    # compute preliminary global optimization
-    # prelim_fit = opt.differential_evolution(objective,param_bounds)
     # compute local optimization
     params_fit = opt.minimize(objective,params_init,bounds=param_bounds,method='L-BFGS-B')
     # params_fit = opt.basinhopping(objective,res.x)
@@ -485,6 +469,8 @@ def recovery_test_2htm(params,nr_targs,nr_lures):
     for i in range(1,len(biases)):
         hi = biases[i]
         lo = biases[i-1]
+        # hi = 1-biases[i-1]
+        # lo = 1-biases[i]
         targ_idxs = np.logical_and(targ_guess>lo,targ_guess<=hi)
         lure_idxs = np.logical_and(lure_guess>lo,lure_guess<=hi)
         targ_confs[targ_idxs] = i
@@ -495,9 +481,11 @@ def recovery_test_2htm(params,nr_targs,nr_lures):
     # or, equivalently, from liberal to conservative criterion
     hit_confs,hit_counts = np.unique(targ_confs,return_counts=True)
     fa_confs,fa_counts = np.unique(lure_confs,return_counts=True)
+    hit_counts = np.flipud(hit_counts)
+    fa_counts = np.flipud(fa_counts)
     # add in high-threshold (non-guess) trials
-    hit_counts[-1] += nr_targ_ht    # non-guess hits
-    fa_counts[0] += nr_lure_ht      # non-guess correct rejections
+    hit_counts[-1] += nr_targ_ht    # non-guess hits (sure 'old')
+    fa_counts[0] += nr_lure_ht      # non-guess correct rejections (sure 'new')
     # construct and return ROC object
     roc_obj = ROC(hit_counts,fa_counts,nr_targs,nr_lures)
     recovered_params = roc_obj.get_htm_params()
