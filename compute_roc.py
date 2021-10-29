@@ -31,7 +31,8 @@ def multinom_LL(obs,n,probs):
     p = np.array(probs)
     if any(p==0):
         p += 1.0/(2*n)
-    res = gammaln(n+1)-np.sum(gammaln(x+1))+np.sum(x*np.log(p))
+    #res = gammaln(n+1)-np.sum(gammaln(x+1))+np.sum(x*np.log(p))
+    res = stats.multinomial.logpmf(x,n,p)
     return res
 
 ################################################################################
@@ -98,25 +99,37 @@ def plot_sdt_model(params):
 
 ################################################################################
 ## Define 2HTM ROC Model
+
 def htm_roc_NLL(roc,params):
     params = np.clip(params,0,1)
     p_old = params[0] # prob. of classifying a target as old (excluding guesses)
     p_new = params[1] # prob. of classifying a lure as new (excluding guesses)
-    biases = list(params[2:])+[1] # probs. of guessing 'old' under different conf levels.
+    biases = np.array(params[2:]) # probs. of guessing 'old' under different conf levels.
     # compute expected target and lure classification probabilities
-    targ_probs = []
-    lure_probs = []
-    for i,bias in enumerate(biases):
-        cum_targ_prob = p_old + bias*(1-p_old)
-        cum_lure_prob = bias*(1-p_new)
-        if i==0:
-            targ_prob = cum_targ_prob
-            lure_prob = cum_lure_prob
-        else:
-            targ_prob = cum_targ_prob - pl.sum(targ_probs)
-            lure_prob = cum_lure_prob - pl.sum(lure_probs)
-        targ_probs.append(targ_prob)
-        lure_probs.append(lure_prob)
+    cum_targ_probs = p_old + biases*(1-p_old)
+    cum_lure_probs = biases*(1-p_new)
+
+    targ_probs = np.diff(cum_targ_probs,prepend=0,append=1)
+    lure_probs = np.diff(cum_lure_probs,prepend=0,append=1)
+
+    # targ_probs = []
+    # lure_probs = []
+    # for i,bias in enumerate(biases):
+    #     # ordered from lowest bias to highest
+    #     # or, equivalently, from most conservative to most liberal criterion
+    #     # or, equivalently, from highest to lowest confidence
+    #     cum_targ_prob = p_old + bias*(1-p_old)
+    #     cum_lure_prob = bias*(1-p_new)
+    #     if i==0:
+    #         targ_prob = cum_targ_prob
+    #         lure_prob = cum_lure_prob
+    #     else:
+    #         targ_prob = cum_targ_prob - pl.sum(targ_probs)
+    #         lure_prob = cum_lure_prob - pl.sum(lure_probs)
+    #     targ_probs.append(targ_prob)
+    #     lure_probs.append(lure_prob)
+
+    #     lure_probs[-1] += p_new
 
     targ_probs = np.flipud(targ_probs)
     lure_probs = np.flipud(lure_probs)
@@ -127,6 +140,7 @@ def htm_roc_NLL(roc,params):
     lure_LL = multinom_LL(roc.fa_counts,roc.noise_count,lure_probs)
     LL = targ_LL + lure_LL
     return -LL
+
 
 # def htm_roc_NLL(roc,params):
 #     params = np.clip(params,0,1)
@@ -404,6 +418,9 @@ def get_conf_roc(trial_data,use_raw_conf=False):
 
     hit_counts = []
     fa_counts = []
+    # count number of positive responses at each confidence level
+    # organized from low-confidence [0] to high-confidence [k]
+    # or, equivalently, from liberal to conservative criterion
     for conf in possible_levels:
         yes_trials = conf_levels==conf
         nr_targs = np.sum(yes_trials*is_target)
@@ -453,11 +470,11 @@ def recovery_test_2htm(params,nr_targs,nr_lures):
     p_new = params[1] # prob. of classifying a lure as new (excluding guesses)
     biases = list(params[2:])+[1] # probs. of guessing 'old' under different conf levels.
     # generate positive (target) trials
-    nr_targ_hc = stats.binom.rvs(nr_targs,p_old)
-    nr_targ_guess = nr_targs - nr_targ_hc
+    nr_targ_ht = stats.binom.rvs(nr_targs,p_old)
+    nr_targ_guess = nr_targs - nr_targ_ht
     # generate negative (lure) trials
-    nr_lure_hc = stats.binom.rvs(nr_lures,p_new)
-    nr_lure_guess = nr_lures - nr_lure_hc
+    nr_lure_ht = stats.binom.rvs(nr_lures,p_new)
+    nr_lure_guess = nr_lures - nr_lure_ht
     # create random 'guesses' for targets and lures
     targ_guess = pl.rand(nr_targ_guess)
     lure_guess = pl.rand(nr_lure_guess)
@@ -472,11 +489,14 @@ def recovery_test_2htm(params,nr_targs,nr_lures):
         targ_confs[targ_idxs] = i
         lure_confs[lure_idxs] = i
     # count number of positive responses at each confidence level
+    # organized from low-confidence [0] to high-confidence [k]
+    # or, equivalently, from high bias to low bias
+    # or, equivalently, from liberal to conservative criterion
     hit_confs,hit_counts = np.unique(targ_confs,return_counts=True)
     fa_confs,fa_counts = np.unique(lure_confs,return_counts=True)
-    # add in non-guesses
-    hit_counts[-1] += nr_targ_hc    # non-guess (high-confidence) hits
-    fa_counts[0] += nr_lure_hc      # non-guess correct rejections
+    # add in high-threshold (non-guess) trials
+    hit_counts[-1] += nr_targ_ht    # non-guess hits
+    fa_counts[0] += nr_lure_ht      # non-guess correct rejections
     # construct and return ROC object
     roc_obj = ROC(hit_counts,fa_counts,nr_targs,nr_lures)
     recovered_params = roc_obj.get_htm_params()
